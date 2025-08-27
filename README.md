@@ -21,7 +21,7 @@ It Automatically Notifies You About **Commits, Pull Requests, Issues, Branch Eve
 ## ⚙️ Tech Stack
 
 * 🐍 Python 3.11+
-* 🤖 [python-telegram-bot](https://python-telegram-bot.org/)
+* 🤖 [Python-Telegram-Bot](https://python-telegram-bot.org/)
 * 🌐 Flask (For GitHub Webhook Receiver)
 * 🗄 PyMySQL (For Database)
 * 🚀 Ngrok (For Exposing Localhost To Webhook)
@@ -48,7 +48,7 @@ source .venv/bin/activate   # Linux / Mac
 ### 3️⃣ Install Dependencies
 
 ```bash
-pip install -r requirements.txt
+pip install -Requirements.txt
 ```
 
 ### 4️⃣ Setup Database
