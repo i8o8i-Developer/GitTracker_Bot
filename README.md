@@ -1,139 +1,251 @@
-# 📌 Git & GitHub Tracer Bot
+# GitTracker Bot 🤖
 
-A Powerful Telegram Bot That Integrates With GitHub Using Webhooks.
-It Automatically Notifies You About **Commits, Pull Requests, Issues, Branch Events, And More** — Directly In Telegram.
+A Sophisticated Telegram Bot For Tracking GitHub Repository Events With Real-Time Notifications, Comprehensive Logging, And Production-Grade Deployment Capabilities.
 
----
+![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)
+![Flask](https://img.shields.io/badge/Flask-3.0.3-lightgrey.svg)
+![Telegram](https://img.shields.io/badge/Telegram-Bot_API-blue.svg)
+![MySQL](https://img.shields.io/badge/MySQL-8.0-orange.svg)
+![Docker](https://img.shields.io/badge/Docker-Ready-blue.svg)
+![Coolify](https://img.shields.io/badge/Coolify-Deployed-green.svg)
 
 ## ✨ Features
 
-* 🔨 **Push Events** → Get Detailed Commit Notifications With Compare Links, Authors, And Bullet-Point Descriptions.
-* 🔀 **Pull Requests** → Get Alerts When PRs Are Opened, Closed, Or Merged.
-* 🐞 **Issues** → Get Alerts When Issues Are Opened, Assigned, Or Closed.
-* 🌱 **Branch Events** → Track New Branch Creation And Deletion.
-* 📋 **Webhook Management** → List Or Delete Repo Webhooks From Telegram.
-* 💬 **Comment Command** → Post Comments To Issues Or PRs Directly From Telegram.
-* 🔗 **PascalCase Formatting** → All Bot Messages, Variables, And Comments Are Pascal Styled For A Clean Look.
-* 🗄 **Auto Database Setup** → MySQL Database And Users Table Created Automatically.
+* **Real-Time GitHub Tracking**: Monitor Push Events, Pull Requests, Issues, and Releases
+* **Telegram Notifications**: Beautiful, Formatted Messages With Emojis And Developer Branding
+* **Webhook Security**: HMAC Signature Verification For GitHub Webhooks
+* **Database Integration**: MySQL With Connection Pooling For Reliable Data Storage
+* **Comprehensive Logging**: Structured Logging With File Rotation and Multiple Log Levels
+* **Health Monitoring**: Built-In Health Checks and Monitoring Endpoints
+* **Docker Support**: Containerized Deployment With Multi-Stage Builds
+* **Coolify Deployment**: One-Click Deployment With Coolify Platform
+* **Environment Configuration**: Secure Configuration Management Via Environment Variables
+* **Error Handling**: Robust Error Handling With Graceful Degradation
 
----
+## 🚀 Quick Start
 
-## ⚙️ Tech Stack
+### Prerequisites
 
-* 🐍 Python 3.11+
-* 🤖 [Python-Telegram-Bot](https://python-telegram-bot.org/)
-* 🌐 Flask (For GitHub Webhook Receiver)
-* 🗄 PyMySQL (For Database)
-* 🚀 Ngrok (For Exposing Localhost To Webhook)
+* Python 3.11+
+* MySQL 8.0+
+* Telegram Bot Token (From [@BotFather](https://t.me/botfather))
+* GitHub OAuth App Credentials
 
----
+### Local Development
 
-## 📦 Installation
+1. **Clone The Repository**
 
-### 1️⃣ Clone Repo
+   ```bash
+   git clone https://github.com/i8o8i-Developer/GitTracker_Bot.git
+   cd GitTracker_Bot
+   ```
 
-```bash
-git clone https://github.com/YourUsername/GitTracer_Bot.git
-cd GitTracer_Bot
-```
+2. **Create Environment File**
 
-### 2️⃣ Setup Virtual Environment
+   ```bash
+   cp .env.example .env
+   # Edit .env with your configuration
+   ```
 
-```bash
-python -m venv .venv
-source .venv/bin/activate   # Linux / Mac
-.venv\Scripts\activate      # Windows
-```
+3. **Install Dependencies**
 
-### 3️⃣ Install Dependencies
+   ```bash
+   pip install -r Requirements.txt
+   ```
 
-```bash
-pip install -Requirements.txt
-```
+4. **Setup Database**
 
-### 4️⃣ Setup Database
+   ```bash
+   mysql -u root -p < Database.sql
+   ```
 
-Edit `DataBase.py` With Your MySQL Credentials.
-The Bot Automatically Creates `Tracer_Bot` Database & `Users` Table On First Run.
+5. **Run The Bot**
 
-### 5️⃣ Configure
+   ```bash
+   python Bot.py
+   ```
 
-Edit `Config.py`:
+## 🐳 Docker Deployment
 
-```python
-Telegram_Token = "YOUR_TELEGRAM_BOT_TOKEN"
-Github_Client_Id = "YOUR_GITHUB_CLIENT_ID"
-Github_Client_Secret = "YOUR_GITHUB_CLIENT_SECRET"
-Ngrok_Url = "YOUR_PUBLIC_NGROK_URL"
-```
-
----
-
-## ▶️ Run Bot
+### Build And Run With Docker Compose
 
 ```bash
-python Bot.py
+# Build The Image
+docker build -t gittracker-bot .
+
+# Run With Docker Compose (If You Have docker-compose.yml)
+docker-compose up -d
 ```
 
-Bot Will:
+### Coolify Deployment
 
-* Start Telegram Polling
-* Start Flask Web Server At `http://127.0.0.1:5000`
-* Accept GitHub Webhooks
+1. **Connect Your Repository To Coolify**
+2. **Use The Provided `coolify.yaml` Configuration**
+3. **Set Environment Variables In Coolify Dashboard**
+4. **Deploy!**
+
+## ⚙️ Configuration
+
+### Environment Variables
+
+| Variable                | Description                                      | Required | Default      |
+| ----------------------- | ------------------------------------------------ | -------- | ------------ |
+| `TELEGRAM_TOKEN`        | Telegram Bot Token From BotFather                | ✅        | -            |
+| `DB_HOST`               | MySQL Database Host                              | ❌        | `127.0.0.1`  |
+| `DB_PORT`               | MySQL Database Port                              | ❌        | `3306`       |
+| `DB_NAME`               | MySQL Database Name                              | ❌        | `Tracer_Bot` |
+| `DB_USER`               | MySQL Database User                              | ❌        | `root`       |
+| `DB_PASSWORD`           | MySQL Database Password                          | ❌        | `""`         |
+| `GITHUB_CLIENT_ID`      | GitHub OAuth App Client ID                       | ✅        | -            |
+| `GITHUB_CLIENT_SECRET`  | GitHub OAuth App Client Secret                   | ✅        | -            |
+| `GITHUB_WEBHOOK_SECRET` | GitHub Webhook Secret For Signature Verification | ❌        | -            |
+| `WEBHOOK_URL`           | Public URL For Webhooks                          | ✅        | -            |
+| `SERVER_HOST`           | Server Bind Host                                 | ❌        | `0.0.0.0`    |
+| `SERVER_PORT`           | Server Bind Port                                 | ❌        | `5000`       |
+| `DEBUG`                 | Enable Debug Mode                                | ❌        | `false`      |
+| `LOG_LEVEL`             | Logging Level (DEBUG, INFO, WARNING, ERROR)      | ❌        | `INFO`       |
+
+### Database Schema
+
+The Bot Uses The Following Main Tables:
+
+* `Users`: Telegram User Information
+* `Repositories`: Tracked GitHub Repositories
+* `Events`: GitHub Webhook Events Log
+
+## 📱 Usage
+
+### Telegram Commands
+
+* `/start` - Initialize The Bot And Get Welcome Message
+* `/help` - Show Available Commands
+* `/track <repo>` - Start Tracking A GitHub Repository
+* `/untrack <repo>` - Stop Tracking A Repository
+* `/list` - List All Tracked Repositories
+* `/status` - Show Bot Status and Statistics
+
+### Webhook Integration
+
+Set Up GitHub Webhooks For Your Repositories:
+
+1. Go To Repository Settings → Webhooks
+2. Add Webhook URL: `https://your-domain.com/webhook`
+3. Content Type: `application/json`
+4. Secret: Your Webhook Secret
+5. Events: Push, Pull Request, Issues, Releases
+
+## 🏗️ Project Structure
+
+```
+GitTracker_Bot/
+├── Bot.py                 # Main Application File
+├── Config.py              # Configuration Management
+├── DataBase.py            # Database Operations
+├── Logging_Config.py      # Logging Configuration
+├── Requirements.txt       # Python Dependencies
+├── Database.sql           # Database Schema
+├── Dockerfile             # Docker Configuration
+├── .env.example           # Environment Variables Template
+├── README.md              # Project Documentation
+└── Logs/                  # Application Logs (Created At Runtime)
+```
+
+## 🔧 Development
+
+### Code Quality
+
+* **Type Hints**: Full Type Annotation Support
+* **Error Handling**: Comprehensive Exception Handling
+* **Logging**: Structured Logging With Multiple Levels
+* **Security**: Input Validation And Secure Practices
+
+### Testing
+
+```bash
+# Run Tests (When Implemented)
+python -m pytest tests/
+
+# Check Code Quality
+python -m flake8
+python -m mypy
+```
+
+### Contributing
+
+1. Fork The Repository
+2. Create A Feature Branch (`git checkout -b feature/amazing-feature`)
+3. Commit Your Changes (`git commit -m 'Add Amazing Feature'`)
+4. Push To The Branch (`git push origin feature/amazing-feature`)
+5. Open A Pull Request
+
+## 📊 Monitoring
+
+### Health Checks
+
+The Application Provides Health Check Endpoints:
+
+* `GET /health` - General Health Status
+* `GET /health/db` - Database Connectivity Check
+* `GET /health/telegram` - Telegram Bot Connectivity Check
+
+### Logs
+
+Logs Are Written To:
+
+* Console (For Development)
+* `logs/bot.log` (Rotating File Logs)
+* Structured JSON Format For Production Monitoring
+
+## 🚀 Deployment Options
+
+### Coolify (Recommended)
+
+1. Import Your Repository Into Coolify
+2. Use The Provided `coolify.yaml` Configuration
+3. Configure Environment Variables
+4. Deploy With One Click
+
+### Docker
+
+```bash
+# Build Image
+docker build -t gittracker-bot .
+
+# Run Container
+docker run -d \
+  --name gittracker-bot \
+  -p 5000:5000 \
+  -e TELEGRAM_TOKEN=your_token \
+  -e DB_HOST=your_db_host \
+  gittracker-bot
+```
+
+### Manual Deployment
+
+1. Set Up MySQL Database
+2. Configure Environment Variables
+3. Install Dependencies: `pip install -r Requirements.txt`
+4. Run: `python Bot.py`
+
+## 🛡️ Security
+
+* **Webhook Verification**: HMAC Signature Validation
+* **Input Sanitization**: All User Inputs Are Validated
+* **Secure Configuration**: Sensitive Data Via Environment Variables
+* **Database Security**: Prepared Statements And Connection Pooling
+* **Logging Security**: No Sensitive Data In Logs
+
+## 📄 License
+
+This Project Is Licensed Under The MIT License - See The [LICENSE](LICENSE) File For Details.
+
+## 👨‍💻 Developer
+
+**I8O8I DEVELOPER**
+
+* Telegram: [@I8O8I\_Developer](https://t.me/I8O8I_Developer)
+* GitHub: [i8o8i-Developer](https://github.com/i8o8i-Developer)
 
 ---
 
-## 📌 Telegram Commands
-
-| Command                                 | Description                               |
-| --------------------------------------- | ----------------------------------------- |
-| `/start`                                | Show Welcome Help                         |
-| `/connect`                              | Connect Your GitHub Account               |
-| `/setrepo owner/repo`                   | Set Default Repository (Installs Webhook) |
-| `/getrepo`                              | Show Current Repository                   |
-| `/listwebhooks`                         | List All Webhooks In Repo                 |
-| `/delwebhook id`                        | Delete A Webhook By Id                    |
-| `/comment owner/repo issue_number text` | Post Comment To Issue Or PR               |
-
----
-
-## 📥 Example Notifications
-
-**Push Event**
-
-```
-🔨 2 New Commits By Alice (https://github.com/org/repo/compare/abc...def) To Org/Repo:Main
-
-✨ Abc123 (https://github.com/org/repo/commit/abc123): Added Login Feature — Alice
-- Updated Authentication Logic
-- Improved Security
-🐛 Def456 (https://github.com/org/repo/commit/def456): Fixed Crash Bug — Bob
-```
-
-**Pull Request**
-
-```
-🔀 Pull Request OPENED In Org/Repo
-👤 By: Alice
-📝 Add Dark Mode Support
-🔗 https://github.com/org/repo/pull/15
-```
-
-**Issue**
-
-```
-🐞 Issue CLOSED In Org/Repo
-👤 By: Bob
-📝 Fix App Crash On Startup
-🔗 https://github.com/org/repo/issues/12
-```
-
----
-
-## 📜 License
-
-This Project Is Licensed Under The **MIT License**.
-You Are Free To Use, Modify, And Distribute With Attribution.
-
-Productiona Varient Deployed
----
+Made With ❤️ By I8O8I DEVELOPER
