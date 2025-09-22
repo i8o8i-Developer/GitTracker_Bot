@@ -333,8 +333,16 @@ def Get_User_Repo_Connections(telegram_id=None):
     """Get User Repo Connections (Backward Compatibility)."""
     return db_manager.get_user_repo_connections(telegram_id)
 
+def get_user_repo_connections(telegram_id=None):
+    """Get User Repo Connections (Backward Compatibility - lowercase version)."""
+    return db_manager.get_user_repo_connections(telegram_id)
+
 def Get_Connections_For_Repo(repo_name):
     """Get Connections For Repo (Backward Compatibility)."""
+    return db_manager.get_user_repo_connections_by_repo(repo_name)
+
+def get_user_repo_connections_by_repo(repo_name):
+    """Get User Repo Connections By Repo (Backward Compatibility - lowercase version)."""
     return db_manager.get_user_repo_connections_by_repo(repo_name)
 
 def check_database_connection():
