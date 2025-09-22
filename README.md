@@ -2,6 +2,9 @@
 
 A Sophisticated Telegram Bot For Tracking GitHub Repository Events With Real-Time Notifications, Comprehensive Logging, And Production-Grade Deployment Capabilities.
 
+<a href="https://www.producthunt.com/products/telegram-gittracker-bot?utm_source=badge-follow&utm_medium=badge&utm_source=badge-telegram&#0045;gittracker&#0045;bot" target="_blank"><img src="https://api.producthunt.com/widgets/embed-image/v1/follow.svg?product_id=1110176&theme=dark" alt="Telegram&#0032;GitTracker&#0032;Bot - Real&#0045;Time&#0032;GitHub&#0032;Notifications&#0032;Straight&#0032;To&#0032;Telegram | Product Hunt" style="width: 250px; height: 54px;" width="250" height="54" /></a>
+<a href="https://www.producthunt.com/products/telegram-gittracker-bot/reviews?utm_source=badge-product_review&utm_medium=badge&utm_source=badge-telegram&#0045;gittracker&#0045;bot" target="_blank"><img src="https://api.producthunt.com/widgets/embed-image/v1/product_review.svg?product_id=1110176&theme=light" alt="Telegram&#0032;GitTracker&#0032;Bot - Real&#0045;Time&#0032;GitHub&#0032;Notifications&#0032;Straight&#0032;To&#0032;Telegram | Product Hunt" style="width: 250px; height: 54px;" width="250" height="54" /></a>
+
 ![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)
 ![Flask](https://img.shields.io/badge/Flask-3.0.3-lightgrey.svg)
 ![Telegram](https://img.shields.io/badge/Telegram-Bot_API-blue.svg)
