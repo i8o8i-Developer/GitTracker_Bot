@@ -7,7 +7,8 @@ CREATE TABLE IF NOT EXISTS Users (
     Telegram_Id BIGINT NOT NULL UNIQUE,
     Github_Username VARCHAR(255),
     Github_Token TEXT,
-    Created_At TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    Created_At TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_telegram_id (Telegram_Id)
 );
 
 CREATE TABLE IF NOT EXISTS User_Repo_Connections (
@@ -18,5 +19,8 @@ CREATE TABLE IF NOT EXISTS User_Repo_Connections (
     Chat_Type ENUM('private', 'group', 'supergroup') NOT NULL,
     Topic_Id BIGINT NULL,
     Created_At TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY unique_connection (Telegram_Id, Repo_Name, Chat_Id, Topic_Id)
+    UNIQUE KEY unique_connection (Telegram_Id, Repo_Name, Chat_Id, Topic_Id),
+    INDEX idx_telegram_id (Telegram_Id),
+    INDEX idx_repo_name (Repo_Name),
+    INDEX idx_chat_id (Chat_Id)
 );
