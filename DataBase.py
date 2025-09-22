@@ -11,7 +11,7 @@ from typing import Optional, List, Dict, Any
 from contextlib import contextmanager
 
 from Config import config
-from logging_config import logger
+from Logging_Config import logger
 
 
 class DatabaseManager:

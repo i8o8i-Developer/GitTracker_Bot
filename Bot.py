@@ -15,7 +15,7 @@ from typing import Optional
 
 import DataBase
 import Config
-from logging_config import logger
+from Logging_Config import logger
 
 # ---------------- Initialize Database ----------------
 try:
