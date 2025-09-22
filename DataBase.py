@@ -337,6 +337,10 @@ def Get_Connections_For_Repo(repo_name):
     """Get Connections For Repo (Backward Compatibility)."""
     return db_manager.get_user_repo_connections_by_repo(repo_name)
 
+def check_database_connection():
+    """Check Database Connection (Backward Compatibility)."""
+    return db_manager.check_database_connection()
+
 # Deprecated Functions
 def Set_Default_Repo(*args, **kwargs):
     """Deprecated: Use Add_Repo_Connection Instead."""
