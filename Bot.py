@@ -9,7 +9,7 @@ import asyncio
 import hmac
 import hashlib
 import time
-from flask import Flask, Request, request, jsonify
+from flask import Flask, request, jsonify
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 from typing import Optional
@@ -820,8 +820,8 @@ def Health():
 def Callback():
     """Handle GitHub OAuth Callback."""
     try:
-        code = Request.args.get("code")
-        telegram_id = Request.args.get("state")
+        code = request.args.get("code")
+        telegram_id = request.args.get("state")
 
         if not code or not telegram_id:
             logger.warning("Missing Authorization Code Or State In Callback")
