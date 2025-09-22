@@ -9,6 +9,7 @@ import asyncio
 import hmac
 import hashlib
 import time
+import re
 from flask import Flask, request, jsonify
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
@@ -197,7 +198,7 @@ async def Start(Update: Update, Context: ContextTypes.DEFAULT_TYPE):
         "• Push, PR, and Issue tracking\n"
         "• Secure webhook integration\n\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "👨‍� <b>Developed by:</b> <code>I8O8I DEVELOPER</code>\n"
+        "👨‍� <b>Developed By:</b> <code>I8O8I DEVELOPER</code>\n"
         "🌟 <b>Version:</b> <code>Production v2.0</code>"
     )
     await Update.message.reply_text(welcome_message, parse_mode="HTML")
@@ -264,7 +265,7 @@ async def SetRepo(Update: Update, Context: ContextTypes.DEFAULT_TYPE):
         # Check If Repository Connection Already Exists For This Chat
         existing_connections = DataBase.get_user_repo_connections(TelegramId)
         for conn in existing_connections:
-            if conn['repo_name'] == Repo and conn['chat_id'] == ChatId and conn['topic_id'] == TopicId:
+            if conn['Repo_Name'] == Repo and conn['Chat_Id'] == ChatId and conn['Topic_Id'] == TopicId:
                 await Update.message.reply_text(f"⚠ Repository {Repo} Is Already Connected To This Chat")
                 return
 
@@ -1017,14 +1018,15 @@ def handle_push_event(data: dict) -> tuple:
         # Process Commits And Send To All Connected Chats
         for connection in connections:
             try:
-                chat_id = connection["chat_id"]
+                chat_id = connection["Chat_Id"]
                 message = format_push_message(data, commits, connection)
                 asyncio.run_coroutine_threadsafe(
                     send_message_to_chat(chat_id, message, connection),
                     BotLoop
                 )
             except Exception as e:
-                logger.error(f"Failed To Send Push Message To Chat {connection['chat_id']}: {e}")
+                chat_id = connection.get("Chat_Id", "Unknown")
+                logger.error(f"Failed To Send Push Message To Chat {chat_id}: {e}")
 
         return jsonify({"status": "Processed"}), 200
 
@@ -1047,14 +1049,15 @@ def handle_pull_request_event(data: dict) -> tuple:
         connections = DataBase.get_user_repo_connections_by_repo(repo_name)
         for connection in connections:
             try:
-                chat_id = connection["chat_id"]
+                chat_id = connection["Chat_Id"]
                 message = format_pr_message(data, connection)
                 asyncio.run_coroutine_threadsafe(
                     send_message_to_chat(chat_id, message, connection),
                     BotLoop
                 )
             except Exception as e:
-                logger.error(f"Failed To Send PR Message To Chat {connection['chat_id']}: {e}")
+                chat_id = connection.get("Chat_Id", "Unknown")
+                logger.error(f"Failed To Send PR Message To Chat {chat_id}: {e}")
 
         return jsonify({"status": "Processed"}), 200
 
@@ -1077,14 +1080,15 @@ def handle_issues_event(data: dict) -> tuple:
         connections = DataBase.get_user_repo_connections_by_repo(repo_name)
         for connection in connections:
             try:
-                chat_id = connection["chat_id"]
+                chat_id = connection["Chat_Id"]
                 message = format_issue_message(data, connection)
                 asyncio.run_coroutine_threadsafe(
                     send_message_to_chat(chat_id, message, connection),
                     BotLoop
                 )
             except Exception as e:
-                logger.error(f"Failed To Send Issue Message To Chat {connection['chat_id']}: {e}")
+                chat_id = connection.get("Chat_Id", "Unknown")
+                logger.error(f"Failed To Send Issue Message To Chat {chat_id}: {e}")
 
         return jsonify({"status": "Processed"}), 200
 
@@ -1117,13 +1121,14 @@ def handle_create_event(data: dict) -> tuple:
 
         for connection in connections:
             try:
-                chat_id = connection["chat_id"]
+                chat_id = connection["Chat_Id"]
                 asyncio.run_coroutine_threadsafe(
                     send_message_to_chat(chat_id, message, connection),
                     BotLoop
                 )
             except Exception as e:
-                logger.error(f"Failed To Send Create Message To Chat {connection['chat_id']}: {e}")
+                chat_id = connection.get("Chat_Id", "Unknown")
+                logger.error(f"Failed To Send Create Message To Chat {chat_id}: {e}")
 
         return jsonify({"status": "Processed"}), 200
 
@@ -1156,13 +1161,14 @@ def handle_delete_event(data: dict) -> tuple:
 
         for connection in connections:
             try:
-                chat_id = connection["chat_id"]
+                chat_id = connection["Chat_Id"]
                 asyncio.run_coroutine_threadsafe(
                     send_message_to_chat(chat_id, message, connection),
                     BotLoop
                 )
             except Exception as e:
-                logger.error(f"Failed To Send Delete Message To Chat {connection['chat_id']}: {e}")
+                chat_id = connection.get("Chat_Id", "Unknown")
+                logger.error(f"Failed To Send Delete Message To Chat {chat_id}: {e}")
 
         return jsonify({"status": "Processed"}), 200
 
@@ -1185,14 +1191,15 @@ def handle_release_event(data: dict) -> tuple:
         connections = DataBase.get_user_repo_connections_by_repo(repo_name)
         for connection in connections:
             try:
-                chat_id = connection["chat_id"]
+                chat_id = connection["Chat_Id"]
                 message = format_release_message(data, connection)
                 asyncio.run_coroutine_threadsafe(
                     send_message_to_chat(chat_id, message, connection),
                     BotLoop
                 )
             except Exception as e:
-                logger.error(f"Failed To Send Release Message To Chat {connection['chat_id']}: {e}")
+                chat_id = connection.get("Chat_Id", "Unknown")
+                logger.error(f"Failed To Send Release Message To Chat {chat_id}: {e}")
 
         return jsonify({"status": "Processed"}), 200
 
@@ -1248,12 +1255,12 @@ async def send_message_to_chat(chat_id: int, message: str, connection: dict = No
     """Send Message To Specific Telegram Chat."""
     try:
         # Handle Topic-Specific Messages For SuperGroups
-        if connection and connection.get("topic_id") and connection.get("chat_type") == "supergroup":
+        if connection and connection.get("Topic_Id") and connection.get("Chat_Type") == "supergroup":
             await BotApp.bot.send_message(
                 chat_id=chat_id,
                 text=message,
                 parse_mode="HTML",
-                message_thread_id=connection["topic_id"]
+                message_thread_id=connection["Topic_Id"]
             )
         else:
             await BotApp.bot.send_message(chat_id=chat_id, text=message, parse_mode="HTML")
