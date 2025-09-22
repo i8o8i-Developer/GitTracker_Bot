@@ -1500,13 +1500,15 @@ if __name__ == "__main__":
         signal.signal(signal.SIGTERM, signal_handler)
 
         # Configure Application With Better Error Handling and Timeouts
-        ApplicationInstance = Application.builder().token(telegram_token).build()
-
-        # Configure Network Settings For Better Stability
-        ApplicationInstance.bot.request.connect_timeout = 30.0
-        ApplicationInstance.bot.request.read_timeout = 30.0
-        ApplicationInstance.bot.request.write_timeout = 30.0
-        ApplicationInstance.bot.request.pool_timeout = 10.0
+        ApplicationInstance = (
+            Application.builder()
+            .token(telegram_token)
+            .connect_timeout(30.0)
+            .read_timeout(30.0)
+            .write_timeout(30.0)
+            .pool_timeout(10.0)
+            .build()
+        )
         
         BotApp = ApplicationInstance
 
@@ -1548,12 +1550,7 @@ if __name__ == "__main__":
             try:
                 ApplicationInstance.run_polling(
                     poll_interval=2.0,
-                    timeout=30,
-                    bootstrap_retries=5,
-                    read_timeout=30,
-                    write_timeout=30,
-                    connect_timeout=30,
-                    pool_timeout=10
+                    bootstrap_retries=5
                 )
                 break  # Exit loop if polling stops normally
             except Exception as polling_error:
