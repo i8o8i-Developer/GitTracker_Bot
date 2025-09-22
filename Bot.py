@@ -8,6 +8,7 @@ import requests
 import asyncio
 import hmac
 import hashlib
+import time
 from flask import Flask, Request, request, jsonify
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
@@ -809,7 +810,7 @@ def Health():
         return jsonify({
             "status": "healthy",
             "database": "connected",
-            "timestamp": asyncio.get_event_loop().time() if BotLoop else None
+            "timestamp": time.time()
         }), 200
     except Exception as e:
         logger.error(f"Health Check Failed: {e}")
