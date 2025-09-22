@@ -276,7 +276,7 @@ class DatabaseManager:
             logger.error(f"Failed To Get Repo Connections: {e}")
             return []
 
-    def get_connections_for_repo(self, repo_name: str) -> List[Dict[str, Any]]:
+    def get_user_repo_connections_by_repo(self, repo_name: str) -> List[Dict[str, Any]]:
         """
         Get All Connections For A Specific Repository.
 
@@ -335,7 +335,7 @@ def Get_User_Repo_Connections(telegram_id=None):
 
 def Get_Connections_For_Repo(repo_name):
     """Get Connections For Repo (Backward Compatibility)."""
-    return db_manager.get_connections_for_repo(repo_name)
+    return db_manager.get_user_repo_connections_by_repo(repo_name)
 
 # Deprecated Functions
 def Set_Default_Repo(*args, **kwargs):
