@@ -10,6 +10,8 @@ import hmac
 import hashlib
 import time
 import re
+import signal
+import sys
 from flask import Flask, request, jsonify
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
@@ -808,9 +810,25 @@ def Health():
         if not db_status:
             return jsonify({"status": "unhealthy", "database": "disconnected"}), 503
 
+        # Check Bot Connectivity (Basic Check)
+        bot_status = "unknown"
+        try:
+            if BotApp:
+                # Simple Check To See If Bot Object Exists And Is Configured
+                if hasattr(BotApp, 'bot') and BotApp.bot.token:
+                    bot_status = "connected"
+                else:
+                    bot_status = "misconfigured"
+            else:
+                bot_status = "not_initialized"
+        except Exception as bot_error:
+            logger.warning(f"Bot Health Check Error: {bot_error}")
+            bot_status = "error"
+
         return jsonify({
             "status": "healthy",
             "database": "connected",
+            "bot": bot_status,
             "timestamp": time.time()
         }), 200
     except Exception as e:
@@ -1252,21 +1270,39 @@ def format_release_message(data: dict, connection: dict) -> str:
 
 
 async def send_message_to_chat(chat_id: int, message: str, connection: dict = None):
-    """Send Message To Specific Telegram Chat."""
-    try:
-        # Handle Topic-Specific Messages For SuperGroups
-        if connection and connection.get("Topic_Id") and connection.get("Chat_Type") == "supergroup":
-            await BotApp.bot.send_message(
-                chat_id=chat_id,
-                text=message,
-                parse_mode="HTML",
-                message_thread_id=connection["Topic_Id"]
-            )
-        else:
-            await BotApp.bot.send_message(chat_id=chat_id, text=message, parse_mode="HTML")
-        logger.info(f"Message Sent To Chat {chat_id}")
-    except Exception as e:
-        logger.error(f"Failed To Send Message To Chat {chat_id}: {e}")
+    """Send Message To Specific Telegram Chat With Retry Logic For Network Errors."""
+    max_retries = 3
+    retry_delay = 5
+    
+    for attempt in range(max_retries):
+        try:
+            # Handle Topic-Specific Messages For SuperGroups
+            if connection and connection.get("Topic_Id") and connection.get("Chat_Type") == "supergroup":
+                await BotApp.bot.send_message(
+                    chat_id=chat_id,
+                    text=message,
+                    parse_mode="HTML",
+                    message_thread_id=connection["Topic_Id"]
+                )
+            else:
+                await BotApp.bot.send_message(chat_id=chat_id, text=message, parse_mode="HTML")
+            logger.info(f"Message Sent To Chat {chat_id}")
+            return  # Success, Exit Retry Loop
+            
+        except Exception as e:
+            error_str = str(e)
+            if ("NetworkError" in error_str or "ReadError" in error_str or 
+                "TimeoutError" in error_str or "ConnectionError" in error_str):
+                if attempt < max_retries - 1:
+                    logger.warning(f"Network Error Sending To Chat {chat_id}, Attempt {attempt + 1}/{max_retries}: {e}")
+                    await asyncio.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential Backoff
+                    continue
+                else:
+                    logger.error(f"Failed To Send Message To Chat {chat_id} After {max_retries} Attempts: {e}")
+            else:
+                logger.error(f"Failed To Send Message To Chat {chat_id}: {e}")
+                break  # Non-Network Error, Don't Retry
 
 
 def format_push_message(data: dict, commits: list, connection: dict) -> str:
@@ -1406,6 +1442,40 @@ def format_issue_message(data: dict, connection: dict) -> str:
 
     return message
 
+# ---------------- Graceful Shutdown Handler ----------------
+def signal_handler(signum, frame):
+    """Handle Shutdown Signals Gracefully."""
+    logger.info(f"Received Signal {signum}, Initiating Graceful Shutdown...")
+    if BotApp:
+        try:
+            BotApp.stop()
+        except Exception as e:
+            logger.error(f"Error Stopping Bot: {e}")
+    sys.exit(0)
+
+# ---------------- Global Error Handler ----------------
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Global Error Handler For The Bot."""
+    logger.error(f"Exception While Handling An Update: {context.error}")
+
+    # Try To Send Error Message To User If Possible
+    try:
+        if update and hasattr(update, 'effective_chat'):
+            error_message = (
+                "❌ <b>TEMPORARY ERROR</b> ❌\n\n"
+                "A Temporary Error Occurred. Please Try Again In A Moment.\n\n"
+                "If The Problem Persists, Contact Support.\n\n"
+                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                "👨‍💻 <b>Developed by:</b> <code>I8O8I DEVELOPER</code>"
+            )
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text=error_message,
+                parse_mode="HTML"
+            )
+    except Exception as e:
+        logger.error(f"Failed To Send Error Message To User: {e}")
+
 # ---------------- Main ----------------
 def RunFlask():
     """Run Flask Server With Production Configuration."""
@@ -1424,7 +1494,20 @@ def RunFlask():
 if __name__ == "__main__":
     try:
         logger.info("Starting GitTracker Bot...")
+
+        # Register Signal Handlers For Graceful Shutdown
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
+
+        # Configure Application With Better Error Handling and Timeouts
         ApplicationInstance = Application.builder().token(telegram_token).build()
+
+        # Configure Network Settings For Better Stability
+        ApplicationInstance.bot.request.connect_timeout = 30.0
+        ApplicationInstance.bot.request.read_timeout = 30.0
+        ApplicationInstance.bot.request.write_timeout = 30.0
+        ApplicationInstance.bot.request.pool_timeout = 10.0
+        
         BotApp = ApplicationInstance
 
         # Register Command Handlers
@@ -1447,15 +1530,42 @@ if __name__ == "__main__":
             ApplicationInstance.add_handler(CommandHandler(command, handler))
             logger.debug(f"Registered Command Handler: {command}")
 
+        # Register Global Error Handler
+        ApplicationInstance.add_error_handler(error_handler)
+        logger.info("Global Error Handler Registered")
+
         # Start Flask Server In Background Thread
         flask_thread = threading.Thread(target=RunFlask, daemon=True)
         flask_thread.start()
         logger.info(f"Flask Server Started On {Config.config.server.host}:{Config.config.server.port}")
 
-        # Start Telegram Bot
+        # Start Telegram Bot With Error Handling
         logger.info("Starting Telegram Bot Polling...")
         BotLoop = asyncio.get_event_loop()
-        ApplicationInstance.run_polling()
+
+        # Run Polling With Automatic Restart On Network Errors
+        while True:
+            try:
+                ApplicationInstance.run_polling(
+                    poll_interval=2.0,
+                    timeout=30,
+                    bootstrap_retries=5,
+                    read_timeout=30,
+                    write_timeout=30,
+                    connect_timeout=30,
+                    pool_timeout=10
+                )
+                break  # Exit loop if polling stops normally
+            except Exception as polling_error:
+                logger.error(f"Polling Error: {polling_error}")
+                if "NetworkError" in str(polling_error) or "ReadError" in str(polling_error):
+                    logger.warning("Network Error Detected, Restarting Polling In 30 Seconds...")
+                    import time
+                    time.sleep(30)
+                    continue
+                else:
+                    # For non-network errors, re-raise
+                    raise
 
     except KeyboardInterrupt:
         logger.info("Bot Stopped By User")
