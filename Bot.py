@@ -12,7 +12,8 @@ import time
 import re
 import signal
 import sys
-from flask import Flask, request, jsonify
+import textwrap
+from flask import Flask, request, jsonify, render_template
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 from typing import Optional
@@ -43,9 +44,10 @@ except ValueError as e:
     exit(1)
 
 # ---------------- Globals ----------------
-App = Flask(__name__)
+App = Flask(__name__, template_folder="Templates")
 BotApp = None
 BotLoop = None   # Store Telegram Bot Loop
+BotStartTime = time.time()
 
 # ---------------- Helper Functions ----------------
 def verify_webhook_signature(payload: bytes, signature: str, secret: str) -> bool:
@@ -181,27 +183,29 @@ def validate_comment_text(text: str) -> bool:
 
 # ---------------- Telegram Handlers ----------------
 async def Start(Update: Update, Context: ContextTypes.DEFAULT_TYPE):
-    welcome_message = (
-        "🎉 <b>Welcome to GitTracker Bot!</b> 🎉\n\n"
-        "🚀 <b>Your Ultimate GitHub Repository Monitor</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        "📋 <b>Available Commands:</b>\n\n"
-        "🔗 <code>/connect</code> → Link Your GitHub Account\n"
-        "📌 <code>/setrepo Owner/Repo</code> → Connect Repository\n"
-        "� <code>/getrepo</code> → View Your Connections\n"
-        "💬 <code>/comment Owner/Repo #ID Message</code> → Comment on Issues\n"
-        "� <code>/stats Owner/Repo</code> → Repository Statistics\n"
-        "�📋 <code>/listwebhooks</code> → Manage Webhooks\n"
-        "🗑 <code>/removerepo Owner/Repo</code> → Remove Connection\n\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "✨ <b>Features:</b>\n"
-        "• Real-time GitHub notifications\n"
-        "• Multi-chat repository connections\n"
-        "• Push, PR, and Issue tracking\n"
-        "• Secure webhook integration\n\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "👨‍� <b>Developed By:</b> <code>I8O8I DEVELOPER</code>\n"
-        "🌟 <b>Version:</b> <code>Production v2.0</code>"
+    welcome_message = build_message_card(
+        "Welcome to GitTracker Bot!",
+        [
+            "🚀 Your GitHub Repository Monitor In Telegram.",
+            "",
+            "📋 Available commands:",
+            "🔗 <code>/connect</code> — Link Your GitHub Account",
+            "📌 <code>/setrepo Owner/Repo</code> — Add Repository Tracking",
+            "📥 <code>/getrepo</code> — Show Connected Repositories",
+            "💬 <code>/comment Owner/Repo #ID Message</code> — Post a Comment",
+            "📊 <code>/stats Owner/Repo</code> — Repository Overview",
+            "📋 <code>/listwebhooks</code> — View Repository Webhooks",
+            "🗑 <code>/removerepo Owner/Repo</code> — Stop Notifications",
+            "",
+            "✨ Features:",
+            "• Real-time GitHub Activity Alerts",
+            "• Multi-Chat Repository Support",
+            "• Issue, PR, Push, Release Tracking",
+            "• Secure Webhook Integration",
+            "",
+            "🌟 Version: Production v2.0"
+        ],
+        emoji="🎉"
     )
     await Update.message.reply_text(welcome_message, parse_mode="HTML")
 
@@ -214,36 +218,121 @@ async def Connect(Update: Update, Context: ContextTypes.DEFAULT_TYPE):
             f"?client_id={github_client_id}&scope=repo"
             f"&state={telegram_id}"
         )
-        connect_msg = (
-            "🔗 <b>CONNECT YOUR GITHUB ACCOUNT</b> 🔗\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            "Click The Link Below To Authorize GitTracker Bot:\n\n"
-            f"🔗 <a href='{auth_url}'>Authorize GitHub Access</a>\n\n"
-            "📋 <b>Permissions Requested:</b>\n"
-            "• Read Access To Your Repositories\n"
-            "• Create Webhooks For Notifications\n\n"
-            "🔒 <b>Your Data Is Secure And Encrypted.</b>\n\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            "👨‍💻 <b>Developed by:</b> <code>I8O8I DEVELOPER</code>"
+        connect_msg = build_message_card(
+            "Connect Your GitHub Account",
+            [
+                "Click The Link Below To Authorize GitTracker Bot.",
+                f"🔗 <a href='{auth_url}'>Authorize GitHub Access</a>",
+                "",
+                "📋 Permissions Requested:",
+                "• Read Access To Your Repositories",
+                "• Create Webhooks For Notifications",
+                "",
+                "🔒 Your Data Is Handled Securely And Privately."
+            ],
+            emoji="🔗"
         )
         await Update.message.reply_text(connect_msg, parse_mode="HTML")
         logger.info(f"Generated GitHub Auth URL For User {telegram_id}")
     except Exception as e:
-        error_msg = (
-            "❌ <b>CONNECTION ERROR</b> ❌\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            "Failed To Generate GitHub Authorization Link.\n\n"
-            "Please Try Again Later Or Contact Support.\n\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            "👨‍💻 <b>Developed by:</b> <code>I8O8I DEVELOPER</code>"
+        error_msg = build_error_card(
+            "Connection Error",
+            [
+                "Unable To Generate The GitHub Authorization Link.",
+                "Please Try Again Later Or Contact Support If This Continues."
+            ]
         )
         await Update.message.reply_text(error_msg, parse_mode="HTML")
         logger.error(f"Error Generating Connection Link For User {Update.effective_user.id}: {e}")
 
+
+async def Help(Update: Update, Context: ContextTypes.DEFAULT_TYPE):
+    """Show A Friendly Help Menu."""
+    help_message = build_message_card(
+        "Bot Help",
+        [
+            "Use Any Of The Commands Below To Manage Your GitHub Tracking:",
+            "",
+            "🔗 <code>/connect</code> — Link Your GitHub Account",
+            "📌 <code>/setrepo Owner/Repo</code> — Add Repository Tracking",
+            "📥 <code>/getrepo</code> — Show Connected Repositories",
+            "🗑 <code>/removerepo Owner/Repo</code> — Remove A Repository Connection",
+            "💬 <code>/comment Owner/Repo #ID Message</code> — Post Issue Or PR Comments",
+            "📊 <code>/stats Owner/Repo</code> — Show Repository Statistics",
+            "🕒 <code>/recent Owner/Repo</code> — Show Recent Commits",
+            "🌿 <code>/branches Owner/Repo</code> — Show Repository Branches",
+            "👥 <code>/contributors Owner/Repo</code> — Show Top Contributors",
+            "📈 <code>/status</code> — Show Bot And Service Status",
+            "ℹ️ <code>/about</code> — About GitTracker Bot"
+        ],
+        emoji="📘"
+    )
+    await Update.message.reply_text(help_message, parse_mode="HTML")
+
+
+async def About(Update: Update, Context: ContextTypes.DEFAULT_TYPE):
+    """Show Bot About Information."""
+    about_message = build_message_card(
+        "About GitTracker Bot",
+        [
+            "GitTracker Bot Sends GitHub Repository Events Directly To Telegram.",
+            "",
+            "• Real-Time Push, Pull Request, Issue, And Release Tracking",
+            "• Secure GitHub Webhook Integration",
+            "• Clean And Consistent Message Formatting",
+            "• Multi-Chat And Topic Support",
+            "",
+            f"• Domain: <code>{Config.config.server.webhook_url or 'Not Configured'}</code>"
+        ],
+        emoji="🤖"
+    )
+    await Update.message.reply_text(about_message, parse_mode="HTML")
+
+
+async def Status(Update: Update, Context: ContextTypes.DEFAULT_TYPE):
+    """Show Bot Status And Health Metrics."""
+    try:
+        uptime_seconds = int(time.time() - BotStartTime)
+        uptime_hours = uptime_seconds // 3600
+        uptime_minutes = (uptime_seconds % 3600) // 60
+        uptime_seconds = uptime_seconds % 60
+
+        TelegramId = Update.effective_user.id
+        Connections = DataBase.Get_User_Repo_Connections(TelegramId)
+        connection_count = len(Connections) if Connections else 0
+
+        status_message = build_message_card(
+            "Bot Status",
+            [
+                f"🟢 Bot Status : Running",
+                f"⏱ Uptime: {uptime_hours}h {uptime_minutes}m {uptime_seconds}s",
+                f"📦 Connected Repositories: {connection_count}",
+                f"🌐 Webhook Domain: <code>{Config.config.server.webhook_url or 'Not Configured'}</code>",
+                f"🖥 Server Host: <code>{Config.config.server.host}:{Config.config.server.port}</code>"
+            ],
+            emoji="📈"
+        )
+        await Update.message.reply_text(status_message, parse_mode="HTML")
+    except Exception as e:
+        logger.error(f"Error Generating Status For User {Update.effective_user.id}: {e}")
+        await Update.message.reply_text(
+            build_error_card(
+                "Status Error",
+                ["Unable To Generate Status Right Now.", "Please Try Again Later."]
+            ),
+            parse_mode="HTML"
+        )
+
 async def SetRepo(Update: Update, Context: ContextTypes.DEFAULT_TYPE):
     try:
         if not Context.args:
-            await Update.message.reply_text("⚠ Usage: /setrepo Owner/Repo Or Full GitHub Url")
+            await Update.message.reply_text(
+                build_warning_card(
+                    "Set Repository",
+                    ["Usage: <code>/setrepo Owner/Repo</code> Or A Full GitHub URL"]
+                ),
+                parse_mode="HTML"
+            )
             return
 
         RepoInput = Context.args[0]
@@ -251,7 +340,13 @@ async def SetRepo(Update: Update, Context: ContextTypes.DEFAULT_TYPE):
         # Validate Repository Input
         Repo = validate_github_repo(RepoInput)
         if not Repo:
-            await Update.message.reply_text("❌ Invalid Repository Format. Use Owner/Repo or Full GitHub URL")
+            await Update.message.reply_text(
+                build_error_card(
+                    "Invalid Repository",
+                    ["Use Owner/Repo Format Or A GitHub URL Like <code>https://github.com/owner/repo</code>"]
+                ),
+                parse_mode="HTML"
+            )
             return
 
         TelegramId = Update.effective_user.id
@@ -261,14 +356,26 @@ async def SetRepo(Update: Update, Context: ContextTypes.DEFAULT_TYPE):
 
         Token = DataBase.Get_Token(TelegramId)
         if not Token:
-            await Update.message.reply_text("❌ You Are Not Connected. Use /connect First.")
+            await Update.message.reply_text(
+                build_warning_card(
+                    "Account Not Connected",
+                    ["Please Use <code>/connect</code> Before Adding A Repository."]
+                ),
+                parse_mode="HTML"
+            )
             return
 
         # Check If Repository Connection Already Exists For This Chat
         existing_connections = DataBase.get_user_repo_connections(TelegramId)
         for conn in existing_connections:
             if conn['Repo_Name'] == Repo and conn['Chat_Id'] == ChatId and conn['Topic_Id'] == TopicId:
-                await Update.message.reply_text(f"⚠ Repository {Repo} Is Already Connected To This Chat")
+                await Update.message.reply_text(
+                    build_warning_card(
+                        "Already Connected",
+                        [f"Repository <code>{Repo}</code> Is Already Connected For This Chat."]
+                    ),
+                    parse_mode="HTML"
+                )
                 return
 
         # Add The Repo Connection
@@ -291,56 +398,66 @@ async def SetRepo(Update: Update, Context: ContextTypes.DEFAULT_TYPE):
         Response = requests.post(ApiUrl, json=Data, headers=Headers, timeout=10)
 
         if Response.status_code in [200, 201]:
-            success_msg = (
-                "✅ <b>REPOSITORY CONNECTED SUCCESSFULLY!</b> ✅\n"
-                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-                f"📦 <b>Repository:</b> <code>{Repo}</code>\n"
-                f"🔗 <b>Webhook:</b> Installed & Active\n"
-                f"📱 <b>Chat:</b> {ChatType.capitalize()}\n"
-                f"🔔 <b>Notifications:</b> Enabled\n\n"
-                "You'll Now Receive Notifications For:\n"
-                "• 🚀 Push Events & Commits\n"
-                "• 🔀 Pull Request Updates\n"
-                "• 🐛 Issue Activities\n"
-                "• 🌱 Branch/Tag Changes\n"
-                "• 📦 Release Updates\n\n"
-                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                "👨‍💻 <b>Developed by:</b> <code>I8O8I DEVELOPER</code>"
+            success_msg = build_success_card(
+                "Repository Connected",
+                [
+                    f"📦 Repository: <code>{Repo}</code>",
+                    f"🔗 Webhook: Installed And Active",
+                    f"📱 Chat: {ChatType.capitalize()}",
+                    "",
+                    "You Will Now Receive Updates For:",
+                    "• Pushes And Commits",
+                    "• Pull Request Activity",
+                    "• Issues And Comments",
+                    "• Branch/Tag Creations And Deletions",
+                    "• Releases"
+                ]
             )
             await Update.message.reply_text(success_msg, parse_mode="HTML")
             logger.info(f"Repository {Repo} Connected For User {TelegramId} In Chat {ChatId}")
         else:
-            error_msg = (
-                "⚠️ <b>REPOSITORY SAVED WITH WARNINGS</b> ⚠️\n"
-                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-                f"📦 <b>Repository:</b> <code>{Repo}</code>\n"
-                f"💾 <b>Status:</b> Saved To Database\n"
-                f"🔗 <b>Webhook:</b> Failed To Install\n\n"
-                f"❌ <b>GitHub Response:</b>\n<code>{Response.text}</code>\n\n"
-                "Repository Is Connected But Webhook Installation Failed.\n"
-                "You May Need To Manually Configure Webhooks On GitHub.\n\n"
-                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                "👨‍💻 <b>Developed by:</b> <code>I8O8I DEVELOPER</code>"
+            error_msg = build_warning_card(
+                "Repository Added With Warnings",
+                [
+                    f"📦 Repository: <code>{Repo}</code>",
+                    "🔗 Webhook Installation Failed",
+                    "",
+                    f"GitHub Response: <code>{Response.text}</code>",
+                    "",
+                    "The Repository Is Saved, But Webhook Delivery May Not Be Active.",
+                    "Please Verify The Webhook Settings On GitHub If Needed."
+                ]
             )
             await Update.message.reply_text(error_msg, parse_mode="HTML")
             logger.warning(f"Failed To Create Webhook For {Repo}: {Response.text}")
     except requests.exceptions.RequestException as e:
         logger.error(f"Network Error Setting Repo For User {Update.effective_user.id}: {e}")
-        await Update.message.reply_text("❌ Network Error Occurred While Setting Up Webhook. Please Try Again.")
+        await Update.message.reply_text(
+            build_error_card(
+                "Network Error",
+                ["Unable To Connect To GitHub At This Time.", "Please Try Again In A Few Minutes."]
+            ),
+            parse_mode="HTML"
+        )
     except Exception as e:
         logger.error(f"Unexpected Error Setting Repo For User {Update.effective_user.id}: {e}")
-        await Update.message.reply_text("❌ An Unexpected Error Occurred While Setting The Repository.")
+        await Update.message.reply_text(
+            build_error_card(
+                "Unexpected Error",
+                ["An Unexpected Error Occurred While Setting The Repository.", "Please Try Again Later."]
+            ),
+            parse_mode="HTML"
+        )
 
 async def GetRepo(Update: Update, Context: ContextTypes.DEFAULT_TYPE):
     try:
         TelegramId = Update.effective_user.id
         Connections = DataBase.Get_User_Repo_Connections(TelegramId)
         if Connections:
-            message = (
-                "� <b>YOUR REPOSITORY CONNECTIONS</b> 📊\n"
-                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            )
-
+            lines = [
+                "Here Are The Repositories Currently Connected To This Account:",
+                ""
+            ]
             for i, Conn in enumerate(Connections, 1):
                 ChatType = Conn['Chat_Type']
                 TopicInfo = f" (Topic: {Conn['Topic_Id']})" if Conn['Topic_Id'] else ""
@@ -350,38 +467,46 @@ async def GetRepo(Update: Update, Context: ContextTypes.DEFAULT_TYPE):
                     'supergroup': '🏢'
                 }.get(ChatType, '💬')
 
-                message += f"{i}. {chat_emoji} <code>{Conn['Repo_Name']}</code>\n"
-                message += f"   └─ {ChatType.capitalize()}{TopicInfo}\n\n"
+                lines.append(f"{i}. {chat_emoji} <code>{Conn['Repo_Name']}</code>")
+                lines.append(f"   • {ChatType.capitalize()}{TopicInfo}")
+                lines.append("")
 
-            message += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            message += "👨‍💻 <b>Developed By:</b> <code>I8O8I DEVELOPER</code>"
-
+            message = build_message_card("Connected Repositories", lines)
             await Update.message.reply_text(message, parse_mode="HTML")
         else:
-            no_connections_msg = (
-                "⚠️ <b>NO REPOSITORY CONNECTIONS</b> ⚠️\n\n"
-                "You Haven't Connected Any Repositories Yet.\n\n"
-                "💡 <b>To Get Started:</b>\n"
-                "1. Use <code>/connect</code> To Link Your GitHub Account\n"
-                "2. Use <code>/setrepo Owner/Repo</code> To Connect Repositories\n\n"
-                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                "👨‍💻 <b>Developed By:</b> <code>I8O8I DEVELOPER</code>"
+            no_connections_msg = build_warning_card(
+                "No Repository Connections",
+                [
+                    "You Haven't Connected Any Repositories Yet.",
+                    "",
+                    "To Get Started:",
+                    "• Use <code>/connect</code> To Link Your GitHub Account.",
+                    "• Use <code>/setrepo Owner/Repo</code> To Add A Repository."
+                ]
             )
             await Update.message.reply_text(no_connections_msg, parse_mode="HTML")
     except Exception as e:
-        error_msg = (
-            "❌ <b>ERROR RETRIEVING REPOSITORIES</b> ❌\n\n"
-            "An Unexpected Error Occurred While Fetching Your Connections.\n\n"
-            "Please Try Again Later Or Contact Support.\n\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            "👨‍💻 <b>Developed By:</b> <code>I8O8I DEVELOPER</code>"
+        await Update.message.reply_text(
+            build_error_card(
+                "Error Retrieving Connections",
+                [
+                    "An Unexpected Error Occurred While Fetching Your Repository Connections.",
+                    "Please Try Again Later."
+                ]
+            ),
+            parse_mode="HTML"
         )
-        await Update.message.reply_text(error_msg, parse_mode="HTML")
 
 async def RemoveRepo(Update: Update, Context: ContextTypes.DEFAULT_TYPE):
     try:
         if not Context.args:
-            await Update.message.reply_text("⚠ Usage: /removerepo Owner/Repo")
+            await Update.message.reply_text(
+                build_warning_card(
+                    "Remove Repository",
+                    ["Usage: <code>/removerepo Owner/Repo</code>"]
+                ),
+                parse_mode="HTML"
+            )
             return
 
         Repo = Context.args[0]
@@ -390,24 +515,36 @@ async def RemoveRepo(Update: Update, Context: ContextTypes.DEFAULT_TYPE):
         TopicId = getattr(Update.effective_message, 'message_thread_id', None) if Update.effective_chat.type == 'supergroup' else None
 
         DataBase.Remove_Repo_Connection(TelegramId, Repo, ChatId, TopicId)
-        success_msg = (
-            "🗑️ <b>REPOSITORY CONNECTION REMOVED</b> 🗑️\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"� <b>Repository:</b> <code>{Repo}</code>\n"
-            f"📱 <b>Chat:</b> {Update.effective_chat.type.capitalize()}\n"
-            f"✅ <b>Status:</b> Connection Removed\n\n"
-            "You Will No Longer Receive Notifications For This Repository In This Chat.\n\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            "👨‍💻 <b>Developed By:</b> <code>I8O8I DEVELOPER</code>"
+        success_msg = build_success_card(
+            "Repository Removed",
+            [
+                f"📦 Repository: <code>{Repo}</code>",
+                f"📱 Chat: {Update.effective_chat.type.capitalize()}",
+                "",
+                "The Repository Connection Has Been Removed For This Chat.",
+                "You Will No Longer Receive Notifications Here."
+            ]
         )
         await Update.message.reply_text(success_msg, parse_mode="HTML")
     except Exception as e:
-        await Update.message.reply_text("❌ An Error Occurred While Removing The Repository Connection.")
+        await Update.message.reply_text(
+            build_error_card(
+                "Removal Failed",
+                ["An Error Occurred While Removing The Repository Connection.", "Please Try Again Later."]
+            ),
+            parse_mode="HTML"
+        )
 
 async def Comment(Update: Update, Context: ContextTypes.DEFAULT_TYPE):
     try:
         if len(Context.args) < 3:
-            await Update.message.reply_text("⚠ Usage: /comment Owner/Repo Issue_Number Message")
+            await Update.message.reply_text(
+                build_warning_card(
+                    "Post Comment",
+                    ["Usage: <code>/comment Owner/Repo Issue_Number Message</code>"]
+                ),
+                parse_mode="HTML"
+            )
             return
 
         RepoInput = Context.args[0]
@@ -417,23 +554,47 @@ async def Comment(Update: Update, Context: ContextTypes.DEFAULT_TYPE):
         # Validate Inputs
         Repo = validate_github_repo(RepoInput)
         if not Repo:
-            await Update.message.reply_text("❌ Invalid Repository Format. Use Owner/Repo")
+            await Update.message.reply_text(
+                build_error_card(
+                    "Invalid Repository",
+                    ["Use A Valid Owner/Repo Format."]
+                ),
+                parse_mode="HTML"
+            )
             return
 
         IssueNumber = validate_issue_number(IssueNumberStr)
         if not IssueNumber:
-            await Update.message.reply_text("❌ Invalid Issue Number. Must Be A Positive Integer.")
+            await Update.message.reply_text(
+                build_error_card(
+                    "Invalid Issue Number",
+                    ["Issue Number Must Be A Positive Integer."]
+                ),
+                parse_mode="HTML"
+            )
             return
 
         if not validate_comment_text(CommentText):
-            await Update.message.reply_text("❌ Invalid Comment Text. Please Check Your Input.")
+            await Update.message.reply_text(
+                build_warning_card(
+                    "Invalid Comment",
+                    ["Please Provide A Valid Comment Message Without Unsafe Content."]
+                ),
+                parse_mode="HTML"
+            )
             return
 
         TelegramId = Update.effective_user.id
 
         Token = DataBase.Get_Token(TelegramId)
         if not Token:
-            await Update.message.reply_text("❌ You Are Not Connected. Use /connect First.")
+            await Update.message.reply_text(
+                build_warning_card(
+                    "Not Connected",
+                    ["Please Use <code>/connect</code> To Link Your GitHub Account First."]
+                ),
+                parse_mode="HTML"
+            )
             return
 
         Url = f"https://api.github.com/repos/{Repo}/issues/{IssueNumber}/comments"
@@ -441,42 +602,53 @@ async def Comment(Update: Update, Context: ContextTypes.DEFAULT_TYPE):
         Response = requests.post(Url, json={"body": CommentText}, headers=Headers, timeout=10)
 
         if Response.status_code == 201:
-            success_msg = (
-                "💬 <b>COMMENT POSTED SUCCESSFULLY!</b> 💬\n"
-                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-                f"📦 <b>Repository:</b> <code>{Repo}</code>\n"
-                f"🔢 <b>Issue/PR:</b> #{IssueNumber}\n"
-                f"✅ <b>Status:</b> Comment Posted\n\n"
-                f"💭 <b>Your comment:</b>\n<code>{CommentText[:100]}{'...' if len(CommentText) > 100 else ''}</code>\n\n"
-                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                "👨‍💻 <b>Developed By:</b> <code>I8O8I DEVELOPER</code>"
+            success_msg = build_success_card(
+                "Comment Posted",
+                [
+                    f"📦 Repository: <code>{Repo}</code>",
+                    f"🔢 Issue/PR: #{IssueNumber}",
+                    "",
+                    f"💬 Comment: <code>{CommentText[:100]}{'...' if len(CommentText) > 100 else ''}</code>"
+                ]
             )
             await Update.message.reply_text(success_msg, parse_mode="HTML")
             logger.info(f"Comment Posted By User {TelegramId} on {Repo}#{IssueNumber}")
         else:
-            error_msg = (
-                "❌ <b>FAILED TO POST COMMENT</b> ❌\n"
-                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-                f"📦 <b>Repository:</b> <code>{Repo}</code>\n"
-                f"🔢 <b>Issue/PR:</b> #{IssueNumber}\n"
-                f"❌ <b>Status:</b> Failed\n\n"
-                f"🔍 <b>GitHub Response:</b>\n<code>{error_msg}</code>\n\n"
-                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                "👨‍💻 <b>Developed By:</b> <code>I8O8I DEVELOPER</code>"
+            error_msg = build_error_card(
+                "Comment Failed",
+                [
+                    f"📦 Repository: <code>{Repo}</code>",
+                    f"🔢 Issue/PR: #{IssueNumber}",
+                    "",
+                    "Unable To Post Your Comment.",
+                    f"GitHub Response: <code>{Response.text}</code>"
+                ]
             )
             await Update.message.reply_text(error_msg, parse_mode="HTML")
-            logger.warning(f"Failed To Post Comment On {Repo}#{IssueNumber}: {error_msg}")
+            logger.warning(f"Failed To Post Comment On {Repo}#{IssueNumber}: {Response.text}")
     except requests.exceptions.RequestException as e:
         logger.error(f"Network Error Posting Comment For User {Update.effective_user.id}: {e}")
-        await Update.message.reply_text("❌ Network Error Occurred While Posting Comment. Please Try Again.")
+        await Update.message.reply_text(
+            build_error_card(
+                "Network Error",
+                ["Unable To Reach GitHub Right Now.", "Please Try Again Later."]
+            ),
+            parse_mode="HTML"
+        )
     except Exception as e:
         logger.error(f"Unexpected Error Posting Comment For User {Update.effective_user.id}: {e}")
-        await Update.message.reply_text("❌ An Unexpected Error Occurred While Posting The Comment.")
+        await Update.message.reply_text(
+            build_error_card(
+                "Unexpected Error",
+                ["An Unexpected Error Occurred While Posting The Comment.", "Please Try Again Later."]
+            ),
+            parse_mode="HTML"
+        )
 
 async def ListWebhooks(Update: Update, Context: ContextTypes.DEFAULT_TYPE):
     try:
         TelegramId = Update.effective_user.id
-        Repo = DataBase.Get_Default_Repo(TelegramId)  
+        Repo = DataBase.Get_Default_Repo(TelegramId)
         if not Repo:
             Connections = DataBase.Get_User_Repo_Connections(TelegramId)
             Repo = Connections[0]['Repo_Name'] if Connections else None
@@ -484,40 +656,86 @@ async def ListWebhooks(Update: Update, Context: ContextTypes.DEFAULT_TYPE):
         Token = DataBase.Get_Token(TelegramId)
 
         if not Repo or not Token:
-            await Update.message.reply_text("⚠ Please /setrepo And /connect First.")
+            await Update.message.reply_text(
+                build_warning_card(
+                    "List Webhooks",
+                    ["Please Connect A Repository First With <code>/setrepo</code> And <code>/connect</code>."]
+                ),
+                parse_mode="HTML"
+            )
             return
 
         Url = f"https://api.github.com/repos/{Repo}/hooks"
         Headers = {"Authorization": f"token {Token}"}
         Response = requests.get(Url, headers=Headers, timeout=10)
         if Response.status_code != 200:
-            await Update.message.reply_text(f"❌ Failed To Fetch Hooks: {Response.text}")
+            await Update.message.reply_text(
+                build_error_card(
+                    "Fetch Failed",
+                    [f"Unable To Fetch Webhooks For <code>{Repo}</code>.", f"GitHub Response: <code>{Response.text}</code>"]
+                ),
+                parse_mode="HTML"
+            )
             return
 
         Hooks = Response.json()
         if not Hooks:
-            await Update.message.reply_text("📭 No Webhooks Found")
+            await Update.message.reply_text(
+                build_message_card(
+                    "No Webhooks Found",
+                    [f"No webhooks are currently installed for <code>{Repo}</code>."]
+                ),
+                parse_mode="HTML"
+            )
             return
 
-        Msg = "📋 Webhooks:\n"
+        lines = [f"Webhooks for <code>{Repo}</code>:", ""]
         for H in Hooks:
-            Msg += f"Id: {H['id']} | Url: {H['config']['url']}\n"
-        await Update.message.reply_text(Msg)
+            lines.append(f"• Id: {H['id']} — <code>{H['config']['url']}</code>")
+
+        await Update.message.reply_text(
+            build_message_card("Repository Webhooks", lines),
+            parse_mode="HTML"
+        )
     except requests.exceptions.RequestException as e:
-        await Update.message.reply_text("❌ Network Error Occurred While Fetching Webhooks. Please Try Again.")
+        await Update.message.reply_text(
+            build_error_card(
+                "Network Error",
+                ["Unable To Reach GitHub Right Now.", "Please Try Again Later."]
+            ),
+            parse_mode="HTML"
+        )
     except KeyError as e:
-        await Update.message.reply_text("❌ Invalid Webhook Data Received From GitHub.")
+        await Update.message.reply_text(
+            build_error_card(
+                "Invalid Data",
+                ["Received Unexpected Webhook Data From GitHub.", "Try Again Later."]
+            ),
+            parse_mode="HTML"
+        )
     except Exception as e:
-        await Update.message.reply_text("❌ An Unexpected Error Occurred While Listing Webhooks.")
+        await Update.message.reply_text(
+            build_error_card(
+                "Error Listing Webhooks",
+                ["An Unexpected Error Occurred While Listing Webhooks.", "Please Try Again Later."]
+            ),
+            parse_mode="HTML"
+        )
 
 async def DelWebhook(Update: Update, Context: ContextTypes.DEFAULT_TYPE):
     try:
         if not Context.args:
-            await Update.message.reply_text("⚠ Usage: /delwebhook Id")
+            await Update.message.reply_text(
+                build_warning_card(
+                    "Delete Webhook",
+                    ["Usage: <code>/delwebhook HookId</code>"]
+                ),
+                parse_mode="HTML"
+            )
             return
         HookId = Context.args[0]
         TelegramId = Update.effective_user.id
-        Repo = DataBase.Get_Default_Repo(TelegramId) 
+        Repo = DataBase.Get_Default_Repo(TelegramId)
         if not Repo:
             Connections = DataBase.Get_User_Repo_Connections(TelegramId)
             Repo = Connections[0]['Repo_Name'] if Connections else None
@@ -525,7 +743,13 @@ async def DelWebhook(Update: Update, Context: ContextTypes.DEFAULT_TYPE):
         Token = DataBase.Get_Token(TelegramId)
 
         if not Repo or not Token:
-            await Update.message.reply_text("⚠ Please /setrepo And /connect First.")
+            await Update.message.reply_text(
+                build_warning_card(
+                    "Webhook Delete",
+                    ["Please Use <code>/setrepo</code> And <code>/connect</code> Before Modifying Webhooks."]
+                ),
+                parse_mode="HTML"
+            )
             return
 
         Url = f"https://api.github.com/repos/{Repo}/hooks/{HookId}"
@@ -533,32 +757,74 @@ async def DelWebhook(Update: Update, Context: ContextTypes.DEFAULT_TYPE):
         Response = requests.delete(Url, headers=Headers, timeout=10)
 
         if Response.status_code == 204:
-            await Update.message.reply_text(f"🗑 Webhook {HookId} Deleted")
+            await Update.message.reply_text(
+                build_success_card(
+                    "Webhook Deleted",
+                    [f"Webhook <code>{HookId}</code> Has Been Removed From <code>{Repo}</code>."]
+                ),
+                parse_mode="HTML"
+            )
         else:
-            await Update.message.reply_text(f"❌ Failed To Delete: {Response.text}")
+            await Update.message.reply_text(
+                build_error_card(
+                    "Delete Failed",
+                    [f"Unable To Delete Webhook <code>{HookId}</code>.", f"GitHub Response: <code>{Response.text}</code>"]
+                ),
+                parse_mode="HTML"
+            )
     except requests.exceptions.RequestException as e:
-        await Update.message.reply_text("❌ Network Error Occurred While Deleting Webhook. Please Try Again.")
+        await Update.message.reply_text(
+            build_error_card(
+                "Network Error",
+                ["Unable To Reach GitHub Right Now.", "Please Try Again Later."]
+            ),
+            parse_mode="HTML"
+        )
     except Exception as e:
-        await Update.message.reply_text("❌ An Unexpected Error Occurred While Deleting The Webhook.")
+        await Update.message.reply_text(
+            build_error_card(
+                "Unexpected Error",
+                ["An Unexpected Error Occurred While Deleting The Webhook.", "Please Try Again Later."]
+            ),
+            parse_mode="HTML"
+        )
 
 async def Stats(Update: Update, Context: ContextTypes.DEFAULT_TYPE):
     try:
         if not Context.args:
-            await Update.message.reply_text("⚠ Usage: /stats Owner/Repo")
+            await Update.message.reply_text(
+                build_warning_card(
+                    "Repository Stats",
+                    ["Usage: <code>/stats Owner/Repo</code>"]
+                ),
+                parse_mode="HTML"
+            )
             return
 
         RepoInput = Context.args[0]
 
         Repo = validate_github_repo(RepoInput)
         if not Repo:
-            await Update.message.reply_text("❌ Invalid Repository Format. Use Owner/Repo or Full GitHub URL")
+            await Update.message.reply_text(
+                build_error_card(
+                    "Invalid Repository",
+                    ["Use Owner/Repo or a GitHub URL like <code>https://github.com/owner/repo</code>."]
+                ),
+                parse_mode="HTML"
+            )
             return
 
         TelegramId = Update.effective_user.id
 
         Token = DataBase.Get_Token(TelegramId)
         if not Token:
-            await Update.message.reply_text("❌ You Are Not Connected. Use /connect First.")
+            await Update.message.reply_text(
+                build_warning_card(
+                    "Not Connected",
+                    ["Please Use <code>/connect</code> Before Requesting Repository Stats."]
+                ),
+                parse_mode="HTML"
+            )
             return
 
         Url = f"https://api.github.com/repos/{Repo}"
@@ -566,7 +832,13 @@ async def Stats(Update: Update, Context: ContextTypes.DEFAULT_TYPE):
         Response = requests.get(Url, headers=Headers, timeout=10)
 
         if Response.status_code != 200:
-            await Update.message.reply_text(f"❌ Failed To Fetch Repository Stats: {Response.text}")
+            await Update.message.reply_text(
+                build_error_card(
+                    "Fetch Failed",
+                    [f"Unable To Fetch Stats For <code>{Repo}</code>.", f"GitHub Response: <code>{Response.text}</code>"]
+                ),
+                parse_mode="HTML"
+            )
             return
 
         Data = Response.json()
@@ -574,58 +846,88 @@ async def Stats(Update: Update, Context: ContextTypes.DEFAULT_TYPE):
         # Extract Stats
         name = Data.get('name', 'Unknown')
         full_name = Data.get('full_name', Repo)
-        description = Data.get('description', 'No description')
+        description = Data.get('description', 'No Description')
         stars = Data.get('stargazers_count', 0)
         forks = Data.get('forks_count', 0)
         issues = Data.get('open_issues_count', 0)
         language = Data.get('language', 'Unknown')
-        created = Data.get('created_at', 'Unknown')[:10]  # YYYY-MM-DD
+        created = Data.get('created_at', 'Unknown')[:10]
         updated = Data.get('updated_at', 'Unknown')[:10]
         size = Data.get('size', 0)
 
-        message = (
-            "📊 <b>REPOSITORY STATISTICS</b> 📊\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"📦 <b>Name:</b> <code>{name}</code>\n"
-            f"🔗 <b>Full Name:</b> <code>{full_name}</code>\n"
-            f"📝 <b>Description:</b> {description}\n\n"
-            f"⭐ <b>Stars:</b> {stars:,}\n"
-            f"🍴 <b>Forks:</b> {forks:,}\n"
-            f"🐛 <b>Open Issues:</b> {issues:,}\n"
-            f"💻 <b>Language:</b> {language}\n"
-            f"📅 <b>Created:</b> {created}\n"
-            f"🔄 <b>Last Updated:</b> {updated}\n"
-            f"💾 <b>Size:</b> {size:,} KB\n\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            "👨‍💻 <b>Developed By:</b> <code>I8O8I DEVELOPER</code>"
+        stats_message = build_message_card(
+            "Repository Statistics",
+            [
+                f"📦 Name: <code>{name}</code>",
+                f"🔗 Full Name: <code>{full_name}</code>",
+                f"📝 Description: {description}",
+                "",
+                f"⭐ Stars: {stars:,}",
+                f"🍴 Forks: {forks:,}",
+                f"🐛 Open Issues: {issues:,}",
+                f"💻 Language: {language}",
+                f"📅 Created: {created}",
+                f"🔄 Last Updated: {updated}",
+                f"💾 Size: {size:,} KB"
+            ]
         )
 
-        await Update.message.reply_text(message, parse_mode="HTML")
+        await Update.message.reply_text(stats_message, parse_mode="HTML")
     except requests.exceptions.RequestException as e:
         logger.error(f"Network Error Fetching Stats For User {Update.effective_user.id}: {e}")
-        await Update.message.reply_text("❌ Network Error Occurred While Fetching Repository Stats. Please Try Again.")
+        await Update.message.reply_text(
+            build_error_card(
+                "Network Error",
+                ["Unable To Reach GitHub Right Now.", "Please Try Again Later."]
+            ),
+            parse_mode="HTML"
+        )
     except Exception as e:
         logger.error(f"Unexpected Error Fetching Stats For User {Update.effective_user.id}: {e}")
-        await Update.message.reply_text("❌ An Unexpected Error Occurred While Fetching Repository Statistics.")
+        await Update.message.reply_text(
+            build_error_card(
+                "Unexpected Error",
+                ["An Unexpected Error Occurred While Fetching Repository Statistics.", "Please Try Again Later."]
+            ),
+            parse_mode="HTML"
+        )
 
 async def Recent(Update: Update, Context: ContextTypes.DEFAULT_TYPE):
     try:
         if not Context.args:
-            await Update.message.reply_text("⚠ Usage: /recent Owner/Repo")
+            await Update.message.reply_text(
+                build_warning_card(
+                    "Recent Commits",
+                    ["Usage: <code>/recent Owner/Repo</code>"]
+                ),
+                parse_mode="HTML"
+            )
             return
 
         RepoInput = Context.args[0]
 
         Repo = validate_github_repo(RepoInput)
         if not Repo:
-            await Update.message.reply_text("❌ Invalid Repository Format. Use Owner/Repo or Full GitHub URL")
+            await Update.message.reply_text(
+                build_error_card(
+                    "Invalid Repository",
+                    ["Use Owner/Repo Or A GitHub URL Like <code>https://github.com/owner/repo</code>."]
+                ),
+                parse_mode="HTML"
+            )
             return
 
         TelegramId = Update.effective_user.id
 
         Token = DataBase.Get_Token(TelegramId)
         if not Token:
-            await Update.message.reply_text("❌ You Are Not Connected. Use /connect First.")
+            await Update.message.reply_text(
+                build_warning_card(
+                    "Not Connected",
+                    ["Please Use <code>/connect</code> Before Fetching Recent Commits."]
+                ),
+                parse_mode="HTML"
+            )
             return
 
         Url = f"https://api.github.com/repos/{Repo}/commits?per_page=10"
@@ -633,66 +935,102 @@ async def Recent(Update: Update, Context: ContextTypes.DEFAULT_TYPE):
         Response = requests.get(Url, headers=Headers, timeout=10)
 
         if Response.status_code != 200:
-            await Update.message.reply_text(f"❌ Failed To Fetch Recent Commits: {Response.text}")
+            await Update.message.reply_text(
+                build_error_card(
+                    "Fetch Failed",
+                    [f"Unable To Retrieve Commits For <code>{Repo}</code>.", f"GitHub Response: <code>{Response.text}</code>"]
+                ),
+                parse_mode="HTML"
+            )
             return
 
         Commits = Response.json()
 
         if not Commits:
-            await Update.message.reply_text("📭 No Recent Commits Found")
+            await Update.message.reply_text(
+                build_message_card(
+                    "No Recent Commits",
+                    [f"No Recent Commits Were Found For <code>{Repo}</code>."]
+                ),
+                parse_mode="HTML"
+            )
             return
 
-        message = (
-            "🕒 <b>RECENT COMMITS</b> 🕒\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"📦 <b>Repository:</b> <code>{Repo}</code>\n\n"
-        )
-
+        lines = [f"Recent Commits For <code>{Repo}</code>:", ""]
         for i, commit in enumerate(Commits[:10], 1):
             sha = commit.get('sha', '')[:7]
             author = commit.get('commit', {}).get('author', {}).get('name', 'Unknown')
             message_commit = commit.get('commit', {}).get('message', '').split('\n')[0]
             date = commit.get('commit', {}).get('author', {}).get('date', '')[:10]
             url = commit.get('html_url', '')
-
             tag = GetCommitTag(message_commit)
 
-            message += f"{i}. {tag} <code>{sha}</code>\n"
-            message += f"   💬 {message_commit}\n"
-            message += f"   👤 {author} | 📅 {date}\n"
+            commit_line = f"{i}. {tag} <code>{sha}</code> — {message_commit}"
+            lines.append(commit_line)
+            lines.append(f"   👤 {author} | 📅 {date}")
             if url:
-                message += f"   🔗 <a href='{url}'>View Commit</a>\n"
-            message += "\n"
+                lines.append(f"   🔗 <a href='{url}'>View Commit</a>")
+            lines.append("")
 
-        message += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        message += "👨‍💻 <b>Developed By:</b> <code>I8O8I DEVELOPER</code>"
-
-        await Update.message.reply_text(message, parse_mode="HTML")
+        await Update.message.reply_text(
+            build_message_card("Recent Commits", lines),
+            parse_mode="HTML"
+        )
     except requests.exceptions.RequestException as e:
         logger.error(f"Network Error Fetching Recent Commits For User {Update.effective_user.id}: {e}")
-        await Update.message.reply_text("❌ Network Error Occurred While Fetching Recent Commits. Please Try Again.")
+        await Update.message.reply_text(
+            build_error_card(
+                "Network Error",
+                ["Unable To Reach GitHub Right Now.", "Please Try Again Later."]
+            ),
+            parse_mode="HTML"
+        )
     except Exception as e:
         logger.error(f"Unexpected Error Fetching Recent Commits For User {Update.effective_user.id}: {e}")
-        await Update.message.reply_text("❌ An Unexpected Error Occurred While Fetching Recent Commits.")
+        await Update.message.reply_text(
+            build_error_card(
+                "Unexpected Error",
+                ["An Unexpected Error Occurred While Fetching Recent Commits.", "Please Try Again Later."]
+            ),
+            parse_mode="HTML"
+        )
 
 async def Branches(Update: Update, Context: ContextTypes.DEFAULT_TYPE):
     try:
         if not Context.args:
-            await Update.message.reply_text("⚠ Usage: /branches Owner/Repo")
+            await Update.message.reply_text(
+                build_warning_card(
+                    "Repository Branches",
+                    ["Usage: <code>/branches Owner/Repo</code>"]
+                ),
+                parse_mode="HTML"
+            )
             return
 
         RepoInput = Context.args[0]
 
         Repo = validate_github_repo(RepoInput)
         if not Repo:
-            await Update.message.reply_text("❌ Invalid Repository Format. Use Owner/Repo or Full GitHub URL")
+            await Update.message.reply_text(
+                build_error_card(
+                    "Invalid Repository",
+                    ["Use Owner/Repo Or A GitHub URL Like <code>https://github.com/owner/repo</code>."]
+                ),
+                parse_mode="HTML"
+            )
             return
 
         TelegramId = Update.effective_user.id
 
         Token = DataBase.Get_Token(TelegramId)
         if not Token:
-            await Update.message.reply_text("❌ You Are Not Connected. Use /connect First.")
+            await Update.message.reply_text(
+                build_warning_card(
+                    "Not Connected",
+                    ["Please Use <code>/connect</code> Before Requesting Branch Info."]
+                ),
+                parse_mode="HTML"
+            )
             return
 
         Url = f"https://api.github.com/repos/{Repo}/branches"
@@ -700,62 +1038,103 @@ async def Branches(Update: Update, Context: ContextTypes.DEFAULT_TYPE):
         Response = requests.get(Url, headers=Headers, timeout=10)
 
         if Response.status_code != 200:
-            await Update.message.reply_text(f"❌ Failed To Fetch Branches: {Response.text}")
+            await Update.message.reply_text(
+                build_error_card(
+                    "Fetch Failed",
+                    [f"Unable To Fetch Branches For <code>{Repo}</code>.", f"GitHub Response: <code>{Response.text}</code>"]
+                ),
+                parse_mode="HTML"
+            )
             return
 
         Branches = Response.json()
 
         if not Branches:
-            await Update.message.reply_text("🌿 No Branches Found")
+            await Update.message.reply_text(
+                build_message_card(
+                    "No Branches Found",
+                    [f"No Branches Were Found For <code>{Repo}</code>."]
+                ),
+                parse_mode="HTML"
+            )
             return
 
-        message = (
-            "🌿 <b>REPOSITORY BRANCHES</b> 🌿\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"📦 <b>Repository:</b> <code>{Repo}</code>\n"
-            f"📊 <b>Total Branches:</b> {len(Branches)}\n\n"
-        )
+        lines = [
+            f"Branches For <code>{Repo}</code>:",
+            f"Total: {len(Branches)}",
+            ""
+        ]
 
-        for branch in Branches[:20]:  # Limit to 20 branches
+        for branch in Branches[:20]:
             name = branch.get('name', 'Unknown')
             sha = branch.get('commit', {}).get('sha', '')[:7]
             protected = branch.get('protected', False)
             protected_icon = "🔒" if protected else "🌿"
-
-            message += f"{protected_icon} <code>{name}</code> ({sha})\n"
+            lines.append(f"{protected_icon} <code>{name}</code> — {sha}")
 
         if len(Branches) > 20:
-            message += f"\n⋯⋯ And {len(Branches) - 20} More Branches ⋯⋯\n"
+            lines.append("")
+            lines.append(f"⋯⋯ And {len(Branches) - 20} More Branches ⋯⋯")
 
-        message += "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        message += "👨‍💻 <b>Developed By:</b> <code>I8O8I DEVELOPER</code>"
-
-        await Update.message.reply_text(message, parse_mode="HTML")
+        await Update.message.reply_text(
+            build_message_card("Repository Branches", lines),
+            parse_mode="HTML"
+        )
     except requests.exceptions.RequestException as e:
         logger.error(f"Network Error Fetching Branches For User {Update.effective_user.id}: {e}")
-        await Update.message.reply_text("❌ Network Error Occurred While Fetching Branches. Please Try Again.")
+        await Update.message.reply_text(
+            build_error_card(
+                "Network Error",
+                ["Unable to reach GitHub right now.", "Please try again later."]
+            ),
+            parse_mode="HTML"
+        )
     except Exception as e:
         logger.error(f"Unexpected Error Fetching Branches For User {Update.effective_user.id}: {e}")
-        await Update.message.reply_text("❌ An Unexpected Error Occurred While Fetching Branches.")
+        await Update.message.reply_text(
+            build_error_card(
+                "Unexpected Error",
+                ["An unexpected error occurred while fetching branches.", "Please try again later."]
+            ),
+            parse_mode="HTML"
+        )
 
 async def Contributors(Update: Update, Context: ContextTypes.DEFAULT_TYPE):
     try:
         if not Context.args:
-            await Update.message.reply_text("⚠ Usage: /contributors Owner/Repo")
+            await Update.message.reply_text(
+                build_warning_card(
+                    "Top Contributors",
+                    ["Usage: <code>/contributors Owner/Repo</code>"]
+                ),
+                parse_mode="HTML"
+            )
             return
 
         RepoInput = Context.args[0]
 
         Repo = validate_github_repo(RepoInput)
         if not Repo:
-            await Update.message.reply_text("❌ Invalid Repository Format. Use Owner/Repo or Full GitHub URL")
+            await Update.message.reply_text(
+                build_error_card(
+                    "Invalid Repository",
+                    ["Use Owner/Repo or a GitHub URL like <code>https://github.com/owner/repo</code>."]
+                ),
+                parse_mode="HTML"
+            )
             return
 
         TelegramId = Update.effective_user.id
 
         Token = DataBase.Get_Token(TelegramId)
         if not Token:
-            await Update.message.reply_text("❌ You Are Not Connected. Use /connect First.")
+            await Update.message.reply_text(
+                build_warning_card(
+                    "Not Connected",
+                    ["Please use <code>/connect</code> before requesting contributors."]
+                ),
+                parse_mode="HTML"
+            )
             return
 
         Url = f"https://api.github.com/repos/{Repo}/contributors?per_page=10"
@@ -763,43 +1142,68 @@ async def Contributors(Update: Update, Context: ContextTypes.DEFAULT_TYPE):
         Response = requests.get(Url, headers=Headers, timeout=10)
 
         if Response.status_code != 200:
-            await Update.message.reply_text(f"❌ Failed To Fetch Contributors: {Response.text}")
+            await Update.message.reply_text(
+                build_error_card(
+                    "Fetch Failed",
+                    [f"Unable to fetch contributors for <code>{Repo}</code>.", f"GitHub response: <code>{Response.text}</code>"]
+                ),
+                parse_mode="HTML"
+            )
             return
 
         Contributors = Response.json()
 
         if not Contributors:
-            await Update.message.reply_text("👥 No Contributors Found")
+            await Update.message.reply_text(
+                build_message_card(
+                    "No Contributors",
+                    [f"No contributors were found for <code>{Repo}</code>."]
+                ),
+                parse_mode="HTML"
+            )
             return
 
-        message = (
-            "👥 <b>TOP CONTRIBUTORS</b> 👥\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"📦 <b>Repository:</b> <code>{Repo}</code>\n\n"
-        )
-
+        lines = [
+            f"Top contributors for <code>{Repo}</code>:",
+            ""
+        ]
         for i, contributor in enumerate(Contributors[:10], 1):
             login = contributor.get('login', 'Unknown')
             contributions = contributor.get('contributions', 0)
-            avatar_url = contributor.get('avatar_url', '')
+            lines.append(f"{i}. <a href='https://github.com/{login}'>@{login}</a> — {contributions:,} contributions")
 
-            message += f"{i}. <a href='https://github.com/{login}'>@{login}</a> - {contributions:,} commits\n"
-
-        message += "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        message += "👨‍💻 <b>Developed By:</b> <code>I8O8I DEVELOPER</code>"
-
-        await Update.message.reply_text(message, parse_mode="HTML")
+        await Update.message.reply_text(
+            build_message_card("Top Contributors", lines),
+            parse_mode="HTML"
+        )
     except requests.exceptions.RequestException as e:
         logger.error(f"Network Error Fetching Contributors For User {Update.effective_user.id}: {e}")
-        await Update.message.reply_text("❌ Network Error Occurred While Fetching Contributors. Please Try Again.")
+        await Update.message.reply_text(
+            build_error_card(
+                "Network Error",
+                ["Unable to reach GitHub right now.", "Please try again later."]
+            ),
+            parse_mode="HTML"
+        )
     except Exception as e:
         logger.error(f"Unexpected Error Fetching Contributors For User {Update.effective_user.id}: {e}")
-        await Update.message.reply_text("❌ An Unexpected Error Occurred While Fetching Contributors.")
+        await Update.message.reply_text(
+            build_error_card(
+                "Unexpected Error",
+                ["An Unexpected Error Occurred While Fetching Contributors.", "Please Try Again Later."]
+            ),
+            parse_mode="HTML"
+        )
 
 # ---------------- Flask Routes ----------------
 @App.route("/")
 def Home():
-    return "✅ GitTracer Bot Running"
+    return render_template(
+        "Home.html",
+        app_name="GitTracker Bot",
+        webhook_url=webhook_url,
+        status_text="Live and operational"
+    )
 
 @App.route("/health")
 def Health():
@@ -869,94 +1273,7 @@ def Callback():
             return "❌ Failed To Save User Data.", 500
 
         logger.info(f"User {telegram_id} Connected As GitHub user {github_username}")
-        success_html = f"""
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GitTracker Bot - Connected!</title>
-    <style>
-        body {{
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            margin: 0;
-            padding: 0;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            color: white;
-        }}
-        .container {{
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            border-radius: 20px;
-            padding: 40px;
-            text-align: center;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            max-width: 500px;
-        }}
-        .success-icon {{
-            font-size: 4em;
-            margin-bottom: 20px;
-        }}
-        .title {{
-            font-size: 2em;
-            margin-bottom: 10px;
-            font-weight: bold;
-        }}
-        .subtitle {{
-            font-size: 1.2em;
-            margin-bottom: 30px;
-            opacity: 0.9;
-        }}
-        .username {{
-            background: rgba(255, 255, 255, 0.2);
-            padding: 10px 20px;
-            border-radius: 10px;
-            display: inline-block;
-            margin-bottom: 30px;
-            font-weight: bold;
-        }}
-        .next-steps {{
-            text-align: left;
-            background: rgba(255, 255, 255, 0.1);
-            padding: 20px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-        }}
-        .developer {{
-            font-size: 0.9em;
-            opacity: 0.7;
-            margin-top: 20px;
-        }}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="success-icon">✅</div>
-        <div class="title">Connection Successful!</div>
-        <div class="subtitle">Welcome to GitTracker Bot</div>
-        <div class="username">@{github_username}</div>
-
-        <div class="next-steps">
-            <strong>🎯 Next Steps:</strong><br><br>
-            1. Return to Telegram<br>
-            2. Use <code>/setrepo owner/repo</code> To Connect Repositories<br>
-            3. Start Receiving GitHub Notifications!<br><br>
-            <em>Example: /setrepo microsoft/vscode</em>
-        </div>
-
-        <div class="developer">
-            👨‍💻 Developed by <strong>I8O8I DEVELOPER</strong>
-        </div>
-    </div>
-</body>
-</html>
-"""
-        return success_html, 200
+        return render_template("Connected.html", github_username=github_username), 200
     except requests.exceptions.RequestException as e:
         logger.error(f"Network Error During GitHub Authentication: {e}")
         return "❌ Network Error During GitHub Authentication.", 500
@@ -1127,14 +1444,15 @@ def handle_create_event(data: dict) -> tuple:
             return jsonify({"error": "Missing Fields"}), 400
 
         connections = DataBase.get_user_repo_connections_by_repo(repo_name)
-        message = (
-            "🌱 <b>BRANCH/TAG CREATED</b> 🌱\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"📦 <b>Repository:</b> <code>{repo_name.split('/')[1]}</code>\n"
-            f"� <b>Type:</b> {ref_type.capitalize()}\n"
-            f"📝 <b>Name:</b> <code>{ref}</code>\n\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            "👨‍💻 <b>Developed by:</b> <code>I8O8I DEVELOPER</code>"
+        message = build_message_card(
+            "BRANCH/TAG CREATED",
+            [
+                f"📦 <b>Repository:</b> <code>{repo_name.split('/')[1]}</code>",
+                f"🔧 <b>Type:</b> {ref_type.capitalize()}",
+                f"📝 <b>Name:</b> <code>{ref}</code>",
+            ],
+            emoji='🌱',
+            footer="👨‍💻 <b>Developed by:</b> <code>I8O8I DEVELOPER</code>",
         )
 
         for connection in connections:
@@ -1167,14 +1485,15 @@ def handle_delete_event(data: dict) -> tuple:
             return jsonify({"error": "Missing Fields"}), 400
 
         connections = DataBase.get_user_repo_connections_by_repo(repo_name)
-        message = (
-            "🗑️ <b>BRANCH/TAG DELETED</b> 🗑️\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"� <b>Repository:</b> <code>{repo_name.split('/')[1]}</code>\n"
-            f"❌ <b>Type:</b> {ref_type.capitalize()}\n"
-            f"📝 <b>Name:</b> <code>{ref}</code>\n\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            "👨‍💻 <b>Developed by:</b> <code>I8O8I DEVELOPER</code>"
+        message = build_message_card(
+            "BRANCH/TAG DELETED",
+            [
+                f"📦 <b>Repository:</b> <code>{repo_name.split('/')[1]}</code>",
+                f"❌ <b>Type:</b> {ref_type.capitalize()}",
+                f"📝 <b>Name:</b> <code>{ref}</code>",
+            ],
+            emoji='🗑️',
+            footer="👨‍💻 <b>Developed by:</b> <code>I8O8I DEVELOPER</code>",
         )
 
         for connection in connections:
@@ -1232,7 +1551,6 @@ def format_release_message(data: dict, connection: dict) -> str:
     repo_name = data.get("repository", {}).get("name", "Unknown")
     action = data.get("action", "published")
 
-    # Choose Emoji Based on Action
     action_emoji = {
         "published": "📦",
         "unpublished": "🚫",
@@ -1243,30 +1561,38 @@ def format_release_message(data: dict, connection: dict) -> str:
         "released": "🚀"
     }.get(action, "📦")
 
-    message = (
-        f"{action_emoji} <b>RELEASE {action.upper()}</b> {action_emoji}\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"📦 <b>Repository:</b> <code>{repo_name}</code>\n"
-        f"🏷️ <b>Tag:</b> <code>{release.get('tag_name')}</code>\n\n"
-        f"📝 <b>Title:</b> {release.get('name')}\n\n"
-        f"👨‍� <b>Author:</b> {release.get('author', {}).get('login', 'Unknown')}\n"
-    )
+    lines = [
+        f"📦 <b>Repository:</b> <code>{repo_name}</code>",
+        f"🏷️ <b>Tag:</b> <code>{release.get('tag_name')}</code>",
+        "",
+        f"📝 <b>Title:</b> {release.get('name')}",
+        "",
+        f"👨‍💻 <b>Author:</b> {release.get('author', {}).get('login', 'Unknown')}",
+    ]
 
-    # Add Release Notes If Available
     body = release.get('body')
     if body:
         body_preview = body[:200] + ('...' if len(body) > 200 else '')
-        message += f"\n📄 <b>Release Notes:</b>\n<code>{body_preview}</code>\n"
+        lines.extend([
+            "",
+            "📄 <b>Release Notes:</b>",
+            f"<code>{body_preview}</code>",
+        ])
 
-    # Add Prerelease Info
     if release.get('prerelease'):
-        message += "🔬 <b>Status:</b> Pre-release\n"
+        lines.append("🔬 <b>Status:</b> Pre-release")
 
-    message += f"\n🔗 <a href='{release.get('html_url')}'>🔍 View Release</a>\n\n"
-    message += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-    message += "👨‍💻 <b>Developed by:</b> <code>I8O8I DEVELOPER</code>"
+    lines.extend([
+        "",
+        f"🔗 <a href='{release.get('html_url')}'>🔍 View Release</a>",
+    ])
 
-    return message
+    return build_message_card(
+        f"RELEASE {action.upper()}",
+        lines,
+        emoji=action_emoji,
+        footer="👨‍💻 <b>Developed by:</b> <code>I8O8I DEVELOPER</code>",
+    )
 
 
 async def send_message_to_chat(chat_id: int, message: str, connection: dict = None):
@@ -1312,42 +1638,49 @@ def format_push_message(data: dict, commits: list, connection: dict) -> str:
     pusher = data.get("pusher", {}).get("name", "Unknown")
     compare_url = data.get("compare", "")
 
-    message = (
-        "� <b>GIT PUSH DETECTED!</b> 🚀\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"📦 <b>Repository:</b> <code>{repo_name}</code>\n"
-        f"🌿 <b>Branch:</b> <code>{branch}</code>\n"
-        f"�‍💻 <b>Pushed by:</b> {pusher}\n"
-        f"📊 <b>Commits:</b> {len(commits)}\n"
-    )
+    lines = [
+        f"📦 <b>Repository:</b> <code>{repo_name}</code>",
+        f"🌿 <b>Branch:</b> <code>{branch}</code>",
+        f"👨‍💻 <b>Pushed by:</b> {pusher}",
+        f"📊 <b>Commits:</b> {len(commits)}",
+    ]
 
     if compare_url:
-        message += f"🔗 <a href='{compare_url}'>📊 Compare Changes</a>\n"
+        lines.append(f"🔗 <a href='{compare_url}'>📊 Compare Changes</a>")
 
-    message += "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-    message += "📝 <b>COMMIT DETAILS:</b>\n\n"
+    lines.extend([
+        "",
+        "📝 <b>COMMIT DETAILS:</b>",
+        "",
+    ])
 
-    for i, commit in enumerate(commits[:5], 1):  # Limit To 5 Commits
+    for i, commit in enumerate(commits[:5], 1):
         tag = GetCommitTag(commit.get("message", ""))
         short_sha = commit.get("id", "")[:7]
         commit_url = commit.get("url", "")
         author = commit.get("author", {}).get("name", "Unknown")
         commit_msg = commit.get("message", "").split('\n')[0]
 
-        message += f"#{i} {tag} <code>{short_sha}</code>\n"
-        message += f"   💬 {commit_msg}\n"
-        message += f"   👤 <i>{author}</i>"
+        detail_line = f"   👤 <i>{author}</i>"
         if commit_url:
-            message += f" | <a href='{commit_url}'>🔗 View</a>"
-        message += "\n\n"
+            detail_line += f" | <a href='{commit_url}'>🔗 View</a>"
+
+        lines.extend([
+            f"#{i} {tag} <code>{short_sha}</code>",
+            f"   💬 {commit_msg}",
+            detail_line,
+            "",
+        ])
 
     if len(commits) > 5:
-        message += f"⋯⋯ And {len(commits) - 5} More Commits ⋯⋯\n\n"
+        lines.append(f"⋯⋯ And {len(commits) - 5} More Commits ⋯⋯")
 
-    message += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-    message += "👨‍💻 <b>Developed by:</b> <code>I8O8I DEVELOPER</code>"
-
-    return message
+    return build_message_card(
+        "GIT PUSH DETECTED",
+        lines,
+        emoji='🚀',
+        footer="👨‍💻 <b>Developed by:</b> <code>I8O8I DEVELOPER</code>",
+    )
 
 
 def format_pr_message(data: dict, connection: dict) -> str:
@@ -1356,7 +1689,6 @@ def format_pr_message(data: dict, connection: dict) -> str:
     repo_name = data.get("repository", {}).get("name", "Unknown")
     action = data.get("action", "updated")
 
-    # Choose Emoji Based on Action
     action_emoji = {
         "opened": "🆕",
         "closed": "❌",
@@ -1365,33 +1697,38 @@ def format_pr_message(data: dict, connection: dict) -> str:
         "ready_for_review": "👀"
     }.get(action, "🔀")
 
-    message = (
-        f"{action_emoji} <b>PULL REQUEST {action.upper()}</b> {action_emoji}\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"📦 <b>Repository:</b> <code>{repo_name}</code>\n"
-        f"🔢 <b>PR #{pr.get('number')}</b>\n\n"
-        f"📝 <b>Title:</b> {pr.get('title')}\n\n"
-        f"👨‍� <b>Author:</b> {pr.get('user', {}).get('login', 'Unknown')}\n"
-    )
+    lines = [
+        f"📦 <b>Repository:</b> <code>{repo_name}</code>",
+        f"🔢 <b>PR #{pr.get('number')}</b>",
+        "",
+        f"📝 <b>Title:</b> {pr.get('title')}",
+        "",
+        f"👨‍💻 <b>Author:</b> {pr.get('user', {}).get('login', 'Unknown')}",
+    ]
 
-    # Add Additional Info If Available
     if pr.get('merged'):
-        message += "✅ <b>Status:</b> Merged\n"
+        lines.append("✅ <b>Status:</b> Merged")
     elif pr.get('state') == 'closed':
-        message += "❌ <b>Status:</b> Closed\n"
+        lines.append("❌ <b>Status:</b> Closed")
     else:
-        message += "🟡 <b>Status:</b> Open\n"
+        lines.append("🟡 <b>Status:</b> Open")
 
     if pr.get('additions') is not None and pr.get('deletions') is not None:
         additions = pr.get('additions', 0)
         deletions = pr.get('deletions', 0)
-        message += f"📈 <b>Changes:</b> +{additions} -{deletions} Lines\n"
+        lines.append(f"📈 <b>Changes:</b> +{additions} -{deletions} Lines")
 
-    message += f"\n🔗 <a href='{pr.get('html_url')}'>🔍 View Pull Request</a>\n\n"
-    message += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-    message += "👨‍💻 <b>Developed by:</b> <code>I8O8I DEVELOPER</code>"
+    lines.extend([
+        "",
+        f"🔗 <a href='{pr.get('html_url')}'>🔍 View Pull Request</a>",
+    ])
 
-    return message
+    return build_message_card(
+        f"PULL REQUEST {action.upper()}",
+        lines,
+        emoji=action_emoji,
+        footer="👨‍💻 <b>Developed by:</b> <code>I8O8I DEVELOPER</code>",
+    )
 
 
 def format_issue_message(data: dict, connection: dict) -> str:
@@ -1411,36 +1748,92 @@ def format_issue_message(data: dict, connection: dict) -> str:
         "unlabeled": "🏷️"
     }.get(action, "🐛")
 
-    message = (
-        f"{action_emoji} <b>ISSUE {action.upper()}</b> {action_emoji}\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"📦 <b>Repository:</b> <code>{repo_name}</code>\n"
-        f"🔢 <b>Issue #{issue.get('number')}</b>\n\n"
-        f"📝 <b>Title:</b> {issue.get('title')}\n\n"
-        f"👨‍� <b>Author:</b> {issue.get('user', {}).get('login', 'Unknown')}\n"
-    )
+    lines = [
+        f"📦 <b>Repository:</b> <code>{repo_name}</code>",
+        f"🔢 <b>Issue #{issue.get('number')}</b>",
+        "",
+        f"📝 <b>Title:</b> {issue.get('title')}",
+        "",
+        f"👨‍💻 <b>Author:</b> {issue.get('user', {}).get('login', 'Unknown')}",
+    ]
 
-    # Add Status and Labels If Available
     if issue.get('state'):
         state_emoji = "🟢" if issue['state'] == 'open' else "🔴"
-        message += f"{state_emoji} <b>Status:</b> {issue['state'].title()}\n"
+        lines.append(f"{state_emoji} <b>Status:</b> {issue['state'].title()}")
 
     if issue.get('labels'):
         labels = [f"#{label['name']}" for label in issue['labels'][:3]]  # Limit to 3 labels
         if labels:
-            message += f"🏷️ <b>Labels:</b> {' '.join(labels)}\n"
+            lines.append(f"🏷️ <b>Labels:</b> {' '.join(labels)}")
 
-    # Add Assignees If Available
     if issue.get('assignees'):
         assignees = [assignee['login'] for assignee in issue['assignees'][:3]]
         if assignees:
-            message += f"👥 <b>Assignees:</b> {', '.join(assignees)}\n"
+            lines.append(f"👥 <b>Assignees:</b> {', '.join(assignees)}")
 
-    message += f"\n🔗 <a href='{issue.get('html_url')}'>🔍 View Issue</a>\n\n"
-    message += "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-    message += "👨‍💻 <b>Developed by:</b> <code>I8O8I DEVELOPER</code>"
+    lines.extend([
+        "",
+        f"🔗 <a href='{issue.get('html_url')}'>🔍 View Issue</a>",
+    ])
 
+    return build_message_card(
+        f"ISSUE {action.upper()}",
+        lines,
+        emoji=action_emoji,
+        footer="👨‍💻 <b>Developed by:</b> <code>I8O8I DEVELOPER</code>",
+    )
+
+# ---------------- Message Formatting Helpers ----------------
+def _wrap_lines(lines: list[str], max_width: int = 42) -> list[str]:
+    wrapped_lines: list[str] = []
+    for line in lines:
+        if line.strip() == "":
+            wrapped_lines.append("")
+            continue
+        wrapped_lines.extend(
+            textwrap.wrap(
+                line,
+                width=max_width,
+                break_long_words=False,
+                break_on_hyphens=False,
+            )
+        )
+    return wrapped_lines
+
+
+def build_message_card(
+    title: str,
+    lines: list[str],
+    emoji: str = 'ℹ️',
+    footer: Optional[str] = None,
+    max_width: int = 42,
+) -> str:
+    """Build A Polished Message Card For User-Facing Bot Replies."""
+    wrapped_lines = _wrap_lines(lines, max_width)
+    longest_line = max((len(line) for line in wrapped_lines + [f"{emoji} {title}" ]), default=max_width)
+    separator_length = min(max(longest_line + 4, len(title) + 8), 50)
+    separator = f"✨{'━' * separator_length}✨"
+
+    footer_text = footer if footer is not None else "👨‍💻 <b>GitTracker Bot</b> • Use /help For Commands"
+    message = f"{emoji} <b>{title}</b>\n"
+    message += f"{separator}\n\n"
+    message += "\n".join(wrapped_lines)
+    message += f"\n\n{separator}\n"
+    if footer_text:
+        message += footer_text
     return message
+
+
+def build_success_card(title: str, lines: list[str]) -> str:
+    return build_message_card(title, lines, emoji='✅')
+
+
+def build_error_card(title: str, lines: list[str]) -> str:
+    return build_message_card(title, lines, emoji='❌')
+
+
+def build_warning_card(title: str, lines: list[str]) -> str:
+    return build_message_card(title, lines, emoji='⚠️')
 
 # ---------------- Graceful Shutdown Handler ----------------
 def signal_handler(signum, frame):
@@ -1461,12 +1854,12 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
     # Try To Send Error Message To User If Possible
     try:
         if update and hasattr(update, 'effective_chat'):
-            error_message = (
-                "❌ <b>TEMPORARY ERROR</b> ❌\n\n"
-                "A Temporary Error Occurred. Please Try Again In A Moment.\n\n"
-                "If The Problem Persists, Contact Support.\n\n"
-                "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                "👨‍💻 <b>Developed by:</b> <code>I8O8I DEVELOPER</code>"
+            error_message = build_error_card(
+                "Temporary Error",
+                [
+                    "A Temporary Error Occurred. Please Try Again In A Moment.",
+                    "If The Problem Persists, Contact Support."
+                ]
             )
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
@@ -1515,6 +1908,9 @@ if __name__ == "__main__":
         # Register Command Handlers
         commands = [
             ("start", Start),
+            ("help", Help),
+            ("about", About),
+            ("status", Status),
             ("connect", Connect),
             ("setrepo", SetRepo),
             ("getrepo", GetRepo),
@@ -1552,7 +1948,7 @@ if __name__ == "__main__":
                     poll_interval=2.0,
                     bootstrap_retries=5
                 )
-                break  # Exit loop if polling stops normally
+                break  
             except Exception as polling_error:
                 logger.error(f"Polling Error: {polling_error}")
                 if "NetworkError" in str(polling_error) or "ReadError" in str(polling_error):
@@ -1561,7 +1957,6 @@ if __name__ == "__main__":
                     time.sleep(30)
                     continue
                 else:
-                    # For non-network errors, re-raise
                     raise
 
     except KeyboardInterrupt:

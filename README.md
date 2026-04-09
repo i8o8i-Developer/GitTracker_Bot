@@ -50,6 +50,8 @@ A Sophisticated Telegram Bot For Tracking GitHub Repository Events With Real-Tim
    # Edit .env with your configuration
    ```
 
+   Set `WEBHOOK_URL` to your public domain such as `https://github.bot.durgaaisolutions.in`.
+
 3. **Install Dependencies**
 
    ```bash

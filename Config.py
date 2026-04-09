@@ -4,8 +4,16 @@ Uses Environment Variables With Sensible Defaults For Production Deployment.
 """
 
 import os
+from pathlib import Path
 from typing import Optional
 from dataclasses import dataclass
+
+from dotenv import load_dotenv
+
+# Load .env File If Present
+dotenv_path = Path(__file__).parent / '.env'
+if dotenv_path.exists():
+    load_dotenv(dotenv_path)
 
 
 @dataclass
