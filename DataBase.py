@@ -42,7 +42,13 @@ class DatabaseManager:
         try:
             conn = self.pool.connection()
             yield conn
+            conn.commit()
         except Exception as e:
+            if conn:
+                try:
+                    conn.rollback()
+                except Exception as rollback_error:
+                    logger.error(f"Database Rollback Error: {rollback_error}")
             logger.error(f"Database Connection Error: {e}")
             raise
         finally:

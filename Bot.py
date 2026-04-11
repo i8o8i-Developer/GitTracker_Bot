@@ -1890,18 +1890,13 @@ def build_message_card(
     max_width: int = 42,
 ) -> str:
     """Build A Polished Message Card For User-Facing Bot Replies."""
-    wrapped_lines = _wrap_lines(lines, max_width)
-    longest_line = max((len(line) for line in wrapped_lines + [f"{emoji} {title}" ]), default=max_width)
-    separator_length = min(max(longest_line + 4, len(title) + 8), 50)
-    separator = f"✨{'━' * separator_length}✨"
-
     footer_text = footer if footer is not None else "👨‍💻 <b>GitTracker Bot</b> • Use /help For Commands"
-    message = f"{emoji} <b>{title}</b>\n"
-    message += f"{separator}\n\n"
-    message += "\n".join(wrapped_lines)
-    message += f"\n\n{separator}\n"
+    separator = "━━━━━━━━━━━━━━━━━━━━"
+    message = f"{emoji} <b>{title}</b>\n{separator}"
+    if lines:
+        message += f"\n\n{'\n'.join(lines)}"
     if footer_text:
-        message += footer_text
+        message += f"\n\n{separator}\n{footer_text}"
     return message
 
 
