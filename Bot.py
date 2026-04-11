@@ -1894,7 +1894,8 @@ def build_message_card(
     separator = "━━━━━━━━━━━━━━━━━━━━"
     message = f"{emoji} <b>{title}</b>\n{separator}"
     if lines:
-        message += f"\n\n{'\n'.join(lines)}"
+        body = "\n".join(lines)
+        message += f"\n\n{body}"
     if footer_text:
         message += f"\n\n{separator}\n{footer_text}"
     return message
