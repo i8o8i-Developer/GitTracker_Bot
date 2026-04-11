@@ -1972,7 +1972,13 @@ if __name__ == "__main__":
         )
         logger.info("Telegram Webhook Configured Successfully")
 
-        # Start Flask Server 
+        def run_loop():
+            BotLoop.run_forever()
+        loop_thread = threading.Thread(target=run_loop, daemon=True)
+        loop_thread.start()
+        logger.info("Bot Event Loop Started In Background Thread")
+
+        # Start Flask Server
         logger.info(f"Starting Unified Server On {Config.config.server.host}:{Config.config.server.port}...")
         App.run(
             host=Config.config.server.host,
