@@ -90,11 +90,14 @@ class ServerConfig:
     @classmethod
     def from_env(cls) -> 'ServerConfig':
         """Create Server Config From Environment Variables."""
+        webhook_url = os.getenv('WEBHOOK_URL')
+        port = os.getenv('PORT') or os.getenv('SERVER_PORT', '5000')
+
         return cls(
             host=os.getenv('SERVER_HOST', '0.0.0.0'),
-            port=int(os.getenv('SERVER_PORT', '5000')),
+            port=int(port),
             debug=os.getenv('DEBUG', 'False').lower() == 'true',
-            webhook_url=os.getenv('WEBHOOK_URL')
+            webhook_url=webhook_url.rstrip('/') if webhook_url else None
         )
 
 

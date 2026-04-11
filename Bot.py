@@ -17,6 +17,7 @@ from flask import Flask, request, jsonify, render_template
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 from typing import Optional
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 import DataBase
 import Config
@@ -45,11 +46,36 @@ except ValueError as e:
 
 # ---------------- Globals ----------------
 App = Flask(__name__, template_folder="Templates")
+App.wsgi_app = ProxyFix(App.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
+ApplicationInstance = None
 BotApp = None
 BotLoop = None   # Store Telegram Bot Loop
+BotThread = None
+BotStartupError = None
+BotReady = False
 BotStartTime = time.time()
 
 # ---------------- Helper Functions ----------------
+def build_public_url(path: str) -> str:
+    """Build An Absolute Public URL From The Configured Base URL."""
+    if not webhook_url:
+        raise ValueError("WEBHOOK_URL Environment Variable Is Required For Webhook Mode")
+
+    normalized_path = path if path.startswith("/") else f"/{path}"
+    return f"{webhook_url}{normalized_path}"
+
+
+def telegram_bot_is_ready() -> bool:
+    """Return Whether The Telegram Application Is Ready To Process Webhooks."""
+    return (
+        BotReady
+        and BotApp is not None
+        and BotLoop is not None
+        and not BotLoop.is_closed()
+        and BotLoop.is_running()
+    )
+
+
 def verify_webhook_signature(payload: bytes, signature: str, secret: str) -> bool:
     """
     Verify GitHub Webhook Signature For security.
@@ -1214,20 +1240,24 @@ def Health():
         if not db_status:
             return jsonify({"status": "unhealthy", "database": "disconnected"}), 503
 
-        # Check Bot Connectivity (Basic Check)
-        bot_status = "unknown"
-        try:
-            if BotApp:
-                # Simple Check To See If Bot Object Exists And Is Configured
-                if hasattr(BotApp, 'bot') and BotApp.bot.token:
-                    bot_status = "connected"
-                else:
-                    bot_status = "misconfigured"
-            else:
-                bot_status = "not_initialized"
-        except Exception as bot_error:
-            logger.warning(f"Bot Health Check Error: {bot_error}")
-            bot_status = "error"
+        if BotStartupError:
+            return jsonify({
+                "status": "unhealthy",
+                "database": "connected",
+                "bot": "startup_failed",
+                "error": BotStartupError,
+                "timestamp": time.time()
+            }), 503
+
+        bot_status = "connected" if telegram_bot_is_ready() else "starting"
+
+        if bot_status != "connected":
+            return jsonify({
+                "status": "unhealthy",
+                "database": "connected",
+                "bot": bot_status,
+                "timestamp": time.time()
+            }), 503
 
         return jsonify({
             "status": "healthy",
@@ -1331,21 +1361,39 @@ def Webhook():
         return jsonify({"error": "Internal Server Error"}), 500
 
 
-@App.route("/telegram/webhook", methods=["POST"])
+@App.route("/telegram/webhook", methods=["GET", "POST"])
 def TelegramWebhook():
     """Handle Telegram Bot Webhook Updates."""
     try:
+        if request.method == "GET":
+            status_code = 200 if telegram_bot_is_ready() else 503
+            return jsonify({
+                "status": "ok" if status_code == 200 else "unavailable",
+                "bot_ready": telegram_bot_is_ready(),
+                "error": BotStartupError
+            }), status_code
+
+        if Config.config.telegram.webhook_secret:
+            secret_token = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
+            if not hmac.compare_digest(secret_token, Config.config.telegram.webhook_secret):
+                logger.warning("Telegram Webhook Rejected Due To Invalid Secret Token")
+                return jsonify({"error": "Invalid Secret Token"}), 401
+
+        if not telegram_bot_is_ready():
+            logger.error("Telegram Webhook Received While Bot Is Not Ready")
+            return jsonify({"error": "Telegram Bot Is Not Ready", "detail": BotStartupError}), 503
+
         logger.info(f"Received Telegram Webhook Request")
         json_data = request.get_json()
         if not json_data:
             logger.warning("Telegram Webhook: Empty or invalid JSON")
             return jsonify({"error": "Invalid JSON"}), 400
 
-        update = Update.de_json(json_data, ApplicationInstance.bot)
+        update = Update.de_json(json_data, BotApp.bot)
         logger.info(f"Telegram Webhook: Processing Update {update.update_id}")
 
         future = asyncio.run_coroutine_threadsafe(
-            ApplicationInstance.process_update(update),
+            BotApp.process_update(update),
             BotLoop
         )
         try:
@@ -1864,14 +1912,31 @@ def build_warning_card(title: str, lines: list[str]) -> str:
     return build_message_card(title, lines, emoji='⚠️')
 
 # ---------------- Graceful Shutdown Handler ----------------
+async def stop_telegram_runtime() -> None:
+    """Stop The Telegram Application Cleanly."""
+    if not BotApp:
+        return
+
+    await BotApp.stop()
+    await BotApp.shutdown()
+
+
 def signal_handler(signum, frame):
     """Handle Shutdown Signals Gracefully."""
+    global BotReady
+
     logger.info(f"Received Signal {signum}, Initiating Graceful Shutdown...")
-    if BotApp:
+    if BotApp and BotLoop and not BotLoop.is_closed():
         try:
-            BotApp.stop()
+            future = asyncio.run_coroutine_threadsafe(stop_telegram_runtime(), BotLoop)
+            future.result(timeout=15)
         except Exception as e:
             logger.error(f"Error Stopping Bot: {e}")
+
+        if BotLoop.is_running():
+            BotLoop.call_soon_threadsafe(BotLoop.stop)
+
+    BotReady = False
     sys.exit(0)
 
 # ---------------- Global Error Handler ----------------
@@ -1912,6 +1977,113 @@ def RunFlask():
         logger.critical(f"Flask Server Error: {e}")
         raise
 
+
+def build_telegram_application() -> Application:
+    """Build The Telegram Application Instance."""
+    application = (
+        Application.builder()
+        .token(telegram_token)
+        .connect_timeout(30.0)
+        .read_timeout(30.0)
+        .write_timeout(30.0)
+        .pool_timeout(10.0)
+        .build()
+    )
+
+    commands = [
+        ("start", Start),
+        ("help", Help),
+        ("about", About),
+        ("status", Status),
+        ("connect", Connect),
+        ("setrepo", SetRepo),
+        ("getrepo", GetRepo),
+        ("removerepo", RemoveRepo),
+        ("comment", Comment),
+        ("listwebhooks", ListWebhooks),
+        ("delwebhook", DelWebhook),
+        ("stats", Stats),
+        ("recent", Recent),
+        ("branches", Branches),
+        ("contributors", Contributors),
+    ]
+
+    for command, handler in commands:
+        application.add_handler(CommandHandler(command, handler))
+        logger.debug(f"Registered Command Handler: {command}")
+
+    application.add_error_handler(error_handler)
+    logger.info("Global Error Handler Registered")
+    return application
+
+
+async def initialize_telegram_runtime(application: Application) -> None:
+    """Initialize And Start The Telegram Application In Webhook Mode."""
+    await application.initialize()
+    await application.start()
+
+    telegram_webhook_url = build_public_url("/telegram/webhook")
+    logger.info(f"Setting Telegram Webhook To: {telegram_webhook_url}")
+
+    webhook_kwargs = {
+        "url": telegram_webhook_url,
+        "drop_pending_updates": True,
+    }
+    if Config.config.telegram.webhook_secret:
+        webhook_kwargs["secret_token"] = Config.config.telegram.webhook_secret
+
+    await application.bot.set_webhook(**webhook_kwargs)
+    logger.info("Telegram Webhook Configured Successfully")
+
+
+def start_telegram_runtime() -> None:
+    """Start The Telegram Application And Background Event Loop."""
+    global ApplicationInstance, BotApp, BotLoop, BotThread, BotReady, BotStartupError
+
+    startup_complete = threading.Event()
+    ApplicationInstance = build_telegram_application()
+    BotApp = ApplicationInstance
+    BotReady = False
+    BotStartupError = None
+
+    def run_loop() -> None:
+        global BotLoop, BotReady, BotStartupError
+
+        loop = asyncio.new_event_loop()
+        BotLoop = loop
+        asyncio.set_event_loop(loop)
+
+        try:
+            loop.run_until_complete(initialize_telegram_runtime(ApplicationInstance))
+            BotReady = True
+        except Exception as e:
+            BotStartupError = str(e)
+            BotReady = False
+            logger.critical(f"Failed To Start Telegram Runtime: {e}", exc_info=True)
+        finally:
+            startup_complete.set()
+
+        if not BotReady:
+            loop.close()
+            BotLoop = None
+            return
+
+        loop.run_forever()
+        loop.close()
+
+    logger.info("Starting Telegram Bot In Webhook Mode...")
+    BotThread = threading.Thread(target=run_loop, daemon=True, name="telegram-bot-loop")
+    BotThread.start()
+
+    if not startup_complete.wait(timeout=30):
+        BotStartupError = "Timed Out Waiting For Telegram Runtime Startup"
+        raise TimeoutError(BotStartupError)
+
+    if BotStartupError:
+        raise RuntimeError(BotStartupError)
+
+    logger.info("Bot Event Loop Started In Background Thread")
+
 if __name__ == "__main__":
     try:
         logger.info("Starting GitTracker Bot...")
@@ -1920,71 +2092,11 @@ if __name__ == "__main__":
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
 
-        # Configure Application With Better Error Handling and Timeouts
-        ApplicationInstance = (
-            Application.builder()
-            .token(telegram_token)
-            .connect_timeout(30.0)
-            .read_timeout(30.0)
-            .write_timeout(30.0)
-            .pool_timeout(10.0)
-            .build()
-        )
-        
-        BotApp = ApplicationInstance
-
-        # Register Command Handlers
-        commands = [
-            ("start", Start),
-            ("help", Help),
-            ("about", About),
-            ("status", Status),
-            ("connect", Connect),
-            ("setrepo", SetRepo),
-            ("getrepo", GetRepo),
-            ("removerepo", RemoveRepo),
-            ("comment", Comment),
-            ("listwebhooks", ListWebhooks),
-            ("delwebhook", DelWebhook),
-            ("stats", Stats),
-            ("recent", Recent),
-            ("branches", Branches),
-            ("contributors", Contributors),
-        ]
-
-        for command, handler in commands:
-            ApplicationInstance.add_handler(CommandHandler(command, handler))
-            logger.debug(f"Registered Command Handler: {command}")
-
-        # Register Global Error Handler
-        ApplicationInstance.add_error_handler(error_handler)
-        logger.info("Global Error Handler Registered")
-
-        # Start Telegram Bot With Webhook Mode
-        logger.info("Starting Telegram Bot In Webhook Mode...")
-        BotLoop = asyncio.new_event_loop()
-        asyncio.set_event_loop(BotLoop)
-
-        # Initialize the application
-        BotLoop.run_until_complete(ApplicationInstance.initialize())
-
-        # Setup webhook
-        telegram_webhook_url = f"{webhook_url}/telegram/webhook"
-        logger.info(f"Setting Telegram Webhook to: {telegram_webhook_url}")
-
-        BotLoop.run_until_complete(
-            ApplicationInstance.bot.set_webhook(
-                url=telegram_webhook_url,
-                drop_pending_updates=True
-            )
-        )
-        logger.info("Telegram Webhook Configured Successfully")
-
-        def run_loop():
-            BotLoop.run_forever()
-        loop_thread = threading.Thread(target=run_loop, daemon=True)
-        loop_thread.start()
-        logger.info("Bot Event Loop Started In Background Thread")
+        try:
+            start_telegram_runtime()
+        except Exception as e:
+            BotStartupError = str(e)
+            logger.error(f"Telegram Runtime Failed To Start: {e}")
 
         # Start Flask Server
         logger.info(f"Starting Unified Server On {Config.config.server.host}:{Config.config.server.port}...")

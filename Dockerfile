@@ -13,9 +13,6 @@ WORKDIR /app
 # Install System Dependencies
 RUN apt-get update && apt-get install -y \
     curl \
-    default-libmysqlclient-dev \
-    build-essential \
-    pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy Requirements First For Better Caching
@@ -41,7 +38,7 @@ EXPOSE 5000
 
 # Health Check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:5000/health', timeout=5)" || exit 1
+    CMD sh -c "curl --fail --silent http://127.0.0.1:${PORT:-${SERVER_PORT:-5000}}/health > /dev/null" || exit 1
 
 # Run The Application
 CMD ["python", "Bot.py"]
