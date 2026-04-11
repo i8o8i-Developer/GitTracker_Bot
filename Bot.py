@@ -1335,15 +1335,23 @@ def Webhook():
 def TelegramWebhook():
     """Handle Telegram Bot Webhook Updates."""
     try:
+        logger.info(f"Received Telegram Webhook Request")
         json_data = request.get_json()
         if not json_data:
+            logger.warning("Telegram Webhook: Empty or invalid JSON")
             return jsonify({"error": "Invalid JSON"}), 400
 
         update = Update.de_json(json_data, ApplicationInstance.bot)
-        asyncio.run_coroutine_threadsafe(
+        logger.info(f"Telegram Webhook: Processing Update {update.update_id}")
+
+        future = asyncio.run_coroutine_threadsafe(
             ApplicationInstance.process_update(update),
             BotLoop
         )
+        try:
+            future.result(timeout=10)
+        except Exception as coro_error:
+            logger.error(f"CoRoutine Error: {coro_error}")
 
         return jsonify({"status": "ok"}), 200
     except Exception as e:
