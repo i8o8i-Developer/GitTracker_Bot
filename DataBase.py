@@ -3,8 +3,8 @@ Database Operations For GitTracker Bot.
 Provides Connection Pooling And Comprehensive Error Handling.
 """
 
-import pymysql
-from pymysql.cursors import DictCursor
+import psycopg2
+from psycopg2.extras import RealDictCursor
 from dbutils.pooled_db import PooledDB
 import logging
 from typing import Optional, List, Dict, Any
@@ -19,22 +19,19 @@ class DatabaseManager:
 
     def __init__(self):
         """Initialize Database Connection Pool."""
-        # 
         self.pool = PooledDB(
-            creator=pymysql,
+            creator=psycopg2,
             host=config.database.host,
             user=config.database.user,
             password=config.database.password,
             database=config.database.name,
             port=config.database.port,
-            charset='utf8mb4',
-            cursorclass=DictCursor,
-            autocommit=True,
+            cursor_factory=RealDictCursor,
+            connect_timeout=10,
             mincached=0,
             maxcached=10,
             maxconnections=20,
-            blocking=True,
-            maxusage=1000
+            blocking=True
         )
         logger.info(f"Database Connection Pool Initialized For {config.database.host}:{config.database.port}")
 
@@ -46,7 +43,7 @@ class DatabaseManager:
             conn = self.pool.connection()
             yield conn
         except Exception as e:
-            logger.error(f"Database Connection Error : {e}")
+            logger.error(f"Database Connection Error: {e}")
             raise
         finally:
             if conn:
@@ -61,19 +58,20 @@ class DatabaseManager:
         """
         try:
             # First Connect Without Database To Create It
-            temp_conn = pymysql.connect(
+            temp_conn = psycopg2.connect(
                 host=config.database.host,
                 user=config.database.user,
                 password=config.database.password,
                 port=config.database.port,
-                charset='utf8mb4'
+                dbname='postgres',  # Connect to default postgres database
+                connect_timeout=10
             )
+            temp_conn.autocommit = True
 
             with temp_conn.cursor() as cursor:
-                cursor.execute(f"CREATE DATABASE IF NOT EXISTS {config.database.name}")
+                cursor.execute(f"CREATE DATABASE {config.database.name}")
                 logger.info(f"Database '{config.database.name}' Created Or Already Exists")
 
-            temp_conn.commit()
             temp_conn.close()
 
             # Now Create Tables
@@ -82,30 +80,41 @@ class DatabaseManager:
                     # Users Table
                     cursor.execute("""
                         CREATE TABLE IF NOT EXISTS Users (
-                            Id INT AUTO_INCREMENT PRIMARY KEY,
+                            Id SERIAL PRIMARY KEY,
                             Telegram_Id BIGINT NOT NULL UNIQUE,
                             Github_Username VARCHAR(255),
                             Github_Token TEXT,
-                            Created_At TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                            INDEX idx_telegram_id (Telegram_Id)
+                            Created_At TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                         )
+                    """)
+
+                    
+                    cursor.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_users_telegram_id ON Users(Telegram_Id)
                     """)
 
                     # User_Repo_Connections Table
                     cursor.execute("""
                         CREATE TABLE IF NOT EXISTS User_Repo_Connections (
-                            Id INT AUTO_INCREMENT PRIMARY KEY,
+                            Id SERIAL PRIMARY KEY,
                             Telegram_Id BIGINT NOT NULL,
                             Repo_Name VARCHAR(255) NOT NULL,
                             Chat_Id BIGINT NOT NULL,
-                            Chat_Type ENUM('private', 'group', 'supergroup') NOT NULL,
+                            Chat_Type VARCHAR(20) NOT NULL,
                             Topic_Id BIGINT NULL,
                             Created_At TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                            UNIQUE KEY unique_connection (Telegram_Id, Repo_Name, Chat_Id, Topic_Id),
-                            INDEX idx_telegram_id (Telegram_Id),
-                            INDEX idx_repo_name (Repo_Name),
-                            INDEX idx_chat_id (Chat_Id)
+                            UNIQUE(Telegram_Id, Repo_Name, Chat_Id, Topic_Id)
                         )
+                    """)
+
+                    cursor.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_connections_telegram_id ON User_Repo_Connections(Telegram_Id)
+                    """)
+                    cursor.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_connections_repo_name ON User_Repo_Connections(Repo_Name)
+                    """)
+                    cursor.execute("""
+                        CREATE INDEX IF NOT EXISTS idx_connections_chat_id ON User_Repo_Connections(Chat_Id)
                     """)
 
                     logger.info("Database Tables Created Successfully")
@@ -150,9 +159,9 @@ class DatabaseManager:
                     cursor.execute("""
                         INSERT INTO Users (Telegram_Id, Github_Username, Github_Token)
                         VALUES (%s, %s, %s)
-                        ON DUPLICATE KEY UPDATE
-                            Github_Username=VALUES(Github_Username),
-                            Github_Token=VALUES(Github_Token)
+                        ON CONFLICT (Telegram_Id) DO UPDATE SET
+                            Github_Username=EXCLUDED.Github_Username,
+                            Github_Token=EXCLUDED.Github_Token
                     """, (telegram_id, github_username, github_token))
 
                     logger.info(f"User {telegram_id} ({github_username}) Saved Successfully")
@@ -177,10 +186,10 @@ class DatabaseManager:
                 with conn.cursor() as cursor:
                     cursor.execute("SELECT Github_Token FROM Users WHERE Telegram_Id = %s", (telegram_id,))
                     row = cursor.fetchone()
-                    return row['Github_Token'] if row else None
+                    return row['github_token'] if row else None
 
         except Exception as e:
-            logger.error(f"Failed ToGet Token For User {telegram_id}: {e}")
+            logger.error(f"Failed To Get Token For User {telegram_id}: {e}")
             return None
 
     def add_repo_connection(self, telegram_id: int, repo_name: str, chat_id: int,
@@ -196,7 +205,7 @@ class DatabaseManager:
             topic_id: Topic ID For Supergroups (optional)
 
         Returns:
-            bool: True If Successfull
+            bool: True If Successful
         """
         try:
             with self.get_connection() as conn:
@@ -204,8 +213,8 @@ class DatabaseManager:
                     cursor.execute("""
                         INSERT INTO User_Repo_Connections (Telegram_Id, Repo_Name, Chat_Id, Chat_Type, Topic_Id)
                         VALUES (%s, %s, %s, %s, %s)
-                        ON DUPLICATE KEY UPDATE
-                            Repo_Name=VALUES(Repo_Name)
+                        ON CONFLICT (Telegram_Id, Repo_Name, Chat_Id, Topic_Id) DO UPDATE SET
+                            Repo_Name=EXCLUDED.Repo_Name
                     """, (telegram_id, repo_name, chat_id, chat_type, topic_id))
 
                     logger.info(f"Repository Connection Added: {repo_name} for user {telegram_id} in chat {chat_id}")
@@ -223,7 +232,7 @@ class DatabaseManager:
         Args:
             telegram_id: Telegram User ID
             repo_name: Repository Name
-            chat_id: TelegramChat ID
+            chat_id: Telegram Chat ID
             topic_id: Topic ID (optional)
 
         Returns:
@@ -232,10 +241,16 @@ class DatabaseManager:
         try:
             with self.get_connection() as conn:
                 with conn.cursor() as cursor:
-                    cursor.execute("""
-                        DELETE FROM User_Repo_Connections
-                        WHERE Telegram_Id=%s AND Repo_Name=%s AND Chat_Id=%s AND (Topic_Id=%s OR Topic_Id IS NULL)
-                    """, (telegram_id, repo_name, chat_id, topic_id))
+                    if topic_id is not None:
+                        cursor.execute("""
+                            DELETE FROM User_Repo_Connections
+                            WHERE Telegram_Id=%s AND Repo_Name=%s AND Chat_Id=%s AND Topic_Id=%s
+                        """, (telegram_id, repo_name, chat_id, topic_id))
+                    else:
+                        cursor.execute("""
+                            DELETE FROM User_Repo_Connections
+                            WHERE Telegram_Id=%s AND Repo_Name=%s AND Chat_Id=%s AND Topic_Id IS NULL
+                        """, (telegram_id, repo_name, chat_id))
 
                     logger.info(f"Repository Connection Removed: {repo_name} For User {telegram_id} In Chat {chat_id}")
                     return True
@@ -270,6 +285,8 @@ class DatabaseManager:
                         """)
 
                     connections = cursor.fetchall()
+                    # Convert RealDictRow to regular dict
+                    connections = [dict(row) for row in connections]
                     logger.debug(f"Retrieved {len(connections)} Connections")
                     return connections
 
@@ -293,10 +310,11 @@ class DatabaseManager:
                     cursor.execute("""
                         SELECT Telegram_Id, Repo_Name, Chat_Id, Chat_Type, Topic_Id
                         FROM User_Repo_Connections
-                        WHERE LOWER(Repo_Name)=%s
-                    """, (repo_name.lower(),))
+                        WHERE LOWER(Repo_Name)=LOWER(%s)
+                    """, (repo_name,))
 
                     connections = cursor.fetchall()
+                    connections = [dict(row) for row in connections]
                     logger.debug(f"Retrieved {len(connections)} Connections For Repo {repo_name}")
                     return connections
 
@@ -361,6 +379,6 @@ def Get_Default_Repo(*args, **kwargs):
     logger.warning("Get_Default_Repo Is Deprecated, Use Get_User_Repo_Connections Instead")
     return None
 
-def Get_All_Users():
+def Get_AllUsers():
     """Get All Users (Backward Compatibility)."""
     return db_manager.get_user_repo_connections()
