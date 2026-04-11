@@ -69,8 +69,14 @@ class DatabaseManager:
             temp_conn.autocommit = True
 
             with temp_conn.cursor() as cursor:
-                cursor.execute(f"CREATE DATABASE {config.database.name}")
-                logger.info(f"Database '{config.database.name}' Created Or Already Exists")
+                try:
+                    cursor.execute(f"CREATE DATABASE {config.database.name}")
+                    logger.info(f"Database '{config.database.name}' Created")
+                except psycopg2.errors.DuplicateDatabase:
+                    logger.info(f"Database '{config.database.name}' Already Exists")
+                except Exception as e:
+                    logger.error(f"Error Creating Database: {e}")
+                    raise
 
             temp_conn.close()
 

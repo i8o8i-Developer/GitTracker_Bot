@@ -1331,7 +1331,7 @@ def Webhook():
         return jsonify({"error": "Internal Server Error"}), 500
 
 
-@app.route("/telegram/webhook", methods=["POST"])
+@App.route("/telegram/webhook", methods=["POST"])
 def TelegramWebhook():
     """Handle Telegram Bot Webhook Updates."""
     try:
