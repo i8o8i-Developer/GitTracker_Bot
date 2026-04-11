@@ -123,12 +123,15 @@
             <section class="card">
                 <h2>Service Status</h2>
                 <p class="status-pill">{{ status_text }}</p>
-                <p>Webhook Endpoint: <code>{{ webhook_url }}</code></p>
+                <p>Base URL: <code>{{ webhook_url }}</code></p>
+                <p>Telegram Webhook: <code>{{ telegram_webhook_endpoint }}</code></p>
+                <p>GitHub Webhook: <code>{{ github_webhook_endpoint }}</code></p>
             </section>
             <section class="card">
                 <h2>How to Use</h2>
                 <p>Use Your Telegram Bot To Connect Repos And Receive GitHub Notifications. The Callback Screen Appears After Successfully Authorizing GitHub Access.</p>
-                <p>Open <code>/health</code> For Machine-Check Health And Monitor Your Service Connectivity.</p>
+                <p>OAuth Callback: <code>{{ callback_endpoint }}</code></p>
+                <p>Open <code>{{ health_endpoint }}</code> For Machine-Check Health And Monitor Your Service Connectivity.</p>
             </section>
             <section class="card">
                 <h2>Quick Actions</h2>
@@ -138,8 +141,8 @@
             </section>
         </main>
         <footer class="footer">
-            <span>Developed by I8O8I DEVELOPER</span>
-            <a href="https://github.bot.durgaaisolutions.in" target="_blank" rel="noopener">Open Webhook Dashboard</a>
+            <span>Developed By <strong>i8o8i Developer</strong></span>
+            <a href="{{ health_endpoint }}" target="_blank" rel="noopener">Open Health Check</a>
         </footer>
     </article>
 </body>

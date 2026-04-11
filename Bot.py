@@ -1224,11 +1224,16 @@ async def Contributors(Update: Update, Context: ContextTypes.DEFAULT_TYPE):
 # ---------------- Flask Routes ----------------
 @App.route("/")
 def Home():
+    base_url = webhook_url or request.url_root.rstrip("/")
     return render_template(
         "Home.html",
         app_name="GitTracker Bot",
-        webhook_url=webhook_url,
-        status_text="Live and operational"
+        webhook_url=base_url,
+        telegram_webhook_endpoint=f"{base_url}/telegram/webhook",
+        github_webhook_endpoint=f"{base_url}/webhook",
+        callback_endpoint=f"{base_url}/callback",
+        health_endpoint=f"{base_url}/health",
+        status_text="Live And Operational"
     )
 
 @App.route("/health")
@@ -1528,7 +1533,7 @@ def handle_create_event(data: dict) -> tuple:
                 f"📝 <b>Name:</b> <code>{ref}</code>",
             ],
             emoji='🌱',
-            footer="👨‍💻 <b>Developed by:</b> <code>I8O8I DEVELOPER</code>",
+            footer="👨‍💻 <b>Developed by:</b> <code>i8o8i Developer</code>",
         )
 
         for connection in connections:
@@ -1569,7 +1574,7 @@ def handle_delete_event(data: dict) -> tuple:
                 f"📝 <b>Name:</b> <code>{ref}</code>",
             ],
             emoji='🗑️',
-            footer="👨‍💻 <b>Developed by:</b> <code>I8O8I DEVELOPER</code>",
+            footer="👨‍💻 <b>Developed by:</b> <code>i8o8i Developer</code>",
         )
 
         for connection in connections:
@@ -1667,7 +1672,7 @@ def format_release_message(data: dict, connection: dict) -> str:
         f"RELEASE {action.upper()}",
         lines,
         emoji=action_emoji,
-        footer="👨‍💻 <b>Developed by:</b> <code>I8O8I DEVELOPER</code>",
+        footer="👨‍💻 <b>Developed by:</b> <code>i8o8i Developer</code>",
     )
 
 
@@ -1755,7 +1760,7 @@ def format_push_message(data: dict, commits: list, connection: dict) -> str:
         "GIT PUSH DETECTED",
         lines,
         emoji='🚀',
-        footer="👨‍💻 <b>Developed by:</b> <code>I8O8I DEVELOPER</code>",
+        footer="👨‍💻 <b>Developed by:</b> <code>i8o8i Developer</code>",
     )
 
 
@@ -1803,7 +1808,7 @@ def format_pr_message(data: dict, connection: dict) -> str:
         f"PULL REQUEST {action.upper()}",
         lines,
         emoji=action_emoji,
-        footer="👨‍💻 <b>Developed by:</b> <code>I8O8I DEVELOPER</code>",
+        footer="👨‍💻 <b>Developed by:</b> <code>i8o8i Developer</code>",
     )
 
 
@@ -1856,7 +1861,7 @@ def format_issue_message(data: dict, connection: dict) -> str:
         f"ISSUE {action.upper()}",
         lines,
         emoji=action_emoji,
-        footer="👨‍💻 <b>Developed by:</b> <code>I8O8I DEVELOPER</code>",
+        footer="👨‍💻 <b>Developed by:</b> <code>i8o8i Developer</code>",
     )
 
 # ---------------- Message Formatting Helpers ----------------
