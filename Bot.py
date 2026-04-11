@@ -1331,6 +1331,26 @@ def Webhook():
         return jsonify({"error": "Internal Server Error"}), 500
 
 
+@app.route("/telegram/webhook", methods=["POST"])
+def TelegramWebhook():
+    """Handle Telegram Bot Webhook Updates."""
+    try:
+        json_data = request.get_json()
+        if not json_data:
+            return jsonify({"error": "Invalid JSON"}), 400
+
+        update = Update.de_json(json_data, ApplicationInstance.bot)
+        asyncio.run_coroutine_threadsafe(
+            ApplicationInstance.process_update(update),
+            BotLoop
+        )
+
+        return jsonify({"status": "ok"}), 200
+    except Exception as e:
+        logger.error(f"Telegram Webhook Error: {e}", exc_info=True)
+        return jsonify({"error": str(e)}), 500
+
+
 def handle_push_event(data: dict) -> tuple:
     """Handle GitHub Push Events."""
     try:
@@ -1932,32 +1952,35 @@ if __name__ == "__main__":
         ApplicationInstance.add_error_handler(error_handler)
         logger.info("Global Error Handler Registered")
 
-        # Start Flask Server In Background Thread
-        flask_thread = threading.Thread(target=RunFlask, daemon=True)
-        flask_thread.start()
-        logger.info(f"Flask Server Started On {Config.config.server.host}:{Config.config.server.port}")
+        # Start Telegram Bot With Webhook Mode
+        logger.info("Starting Telegram Bot In Webhook Mode...")
+        BotLoop = asyncio.new_event_loop()
+        asyncio.set_event_loop(BotLoop)
 
-        # Start Telegram Bot With Error Handling
-        logger.info("Starting Telegram Bot Polling...")
-        BotLoop = asyncio.get_event_loop()
+        # Initialize the application
+        BotLoop.run_until_complete(ApplicationInstance.initialize())
 
-        # Run Polling With Automatic Restart On Network Errors
-        while True:
-            try:
-                ApplicationInstance.run_polling(
-                    poll_interval=2.0,
-                    bootstrap_retries=5
-                )
-                break  
-            except Exception as polling_error:
-                logger.error(f"Polling Error: {polling_error}")
-                if "NetworkError" in str(polling_error) or "ReadError" in str(polling_error):
-                    logger.warning("Network Error Detected, Restarting Polling In 30 Seconds...")
-                    import time
-                    time.sleep(30)
-                    continue
-                else:
-                    raise
+        # Setup webhook
+        telegram_webhook_url = f"{webhook_url}/telegram/webhook"
+        logger.info(f"Setting Telegram Webhook to: {telegram_webhook_url}")
+
+        BotLoop.run_until_complete(
+            ApplicationInstance.bot.set_webhook(
+                url=telegram_webhook_url,
+                drop_pending_updates=True
+            )
+        )
+        logger.info("Telegram Webhook Configured Successfully")
+
+        # Start Flask Server 
+        logger.info(f"Starting Unified Server On {Config.config.server.host}:{Config.config.server.port}...")
+        App.run(
+            host=Config.config.server.host,
+            port=Config.config.server.port,
+            debug=Config.config.server.debug,
+            threaded=True,
+            use_reloader=False
+        )
 
     except KeyboardInterrupt:
         logger.info("Bot Stopped By User")

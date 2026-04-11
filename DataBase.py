@@ -19,6 +19,7 @@ class DatabaseManager:
 
     def __init__(self):
         """Initialize Database Connection Pool."""
+        # 
         self.pool = PooledDB(
             creator=pymysql,
             host=config.database.host,
@@ -29,7 +30,7 @@ class DatabaseManager:
             charset='utf8mb4',
             cursorclass=DictCursor,
             autocommit=True,
-            mincached=2,
+            mincached=0,
             maxcached=10,
             maxconnections=20,
             blocking=True,
