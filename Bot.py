@@ -24,14 +24,23 @@ import Config
 from Logging_Config import logger
 
 # ---------------- Initialize Database ----------------
-try:
-    if not DataBase.Init_Db():
-        logger.error("Failed To Initialize Database")
-        exit(1)
-    logger.info("Database Initialized Successfully")
-except Exception as e:
-    logger.critical(f"Critical Error During Database Initialization: {e}")
-    exit(1)
+_MAX_DB_RETRIES = 5
+_DB_RETRY_DELAY = 5  # seconds
+
+for _attempt in range(1, _MAX_DB_RETRIES + 1):
+    try:
+        if DataBase.Init_Db():
+            logger.info("Database Initialized Successfully")
+            break
+        logger.error(f"Failed To Initialize Database (Attempt {_attempt}/{_MAX_DB_RETRIES})")
+    except Exception as e:
+        logger.critical(f"Critical Error During Database Initialization (Attempt {_attempt}/{_MAX_DB_RETRIES}): {e}")
+    if _attempt < _MAX_DB_RETRIES:
+        logger.info(f"Retrying Database Initialization In {_DB_RETRY_DELAY} Seconds...")
+        time.sleep(_DB_RETRY_DELAY)
+else:
+    logger.critical("All Database Initialization Attempts Failed. Exiting.")
+    sys.exit(1)
 
 # ---------------- Config ----------------
 try:
