@@ -28,12 +28,7 @@ class DatabaseConfig:
 
     @classmethod
     def from_env(cls) -> 'DatabaseConfig':
-        """Create Database Config From Environment Variables.
 
-        Supports a full DATABASE_URL / POSTGRES_URL connection string
-        (e.g. postgresql://user:password@host:port/dbname). When present it
-        takes priority over the individual DB_* variables.
-        """
         database_url = os.getenv('DATABASE_URL') or os.getenv('POSTGRES_URL')
         if database_url:
             parsed = urlparse(database_url)
