@@ -44,7 +44,7 @@ class DatabaseConfig:
             user=os.getenv('DB_USER', 'root'),
             password=os.getenv('DB_PASSWORD', ''),
             name=os.getenv('DB_NAME', 'Tracer_Bot'),
-            port=int(os.getenv('DB_PORT', '5432'))
+            port=int(os.getenv('DB_PORT', '3198'))
         )
 
 
