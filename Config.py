@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 from typing import Optional
 from dataclasses import dataclass
+from urllib.parse import urlparse, unquote
 
 from dotenv import load_dotenv
 
@@ -23,17 +24,27 @@ class DatabaseConfig:
     user: str = "root"
     password: str = ""
     name: str = "Tracer_Bot"
-    port: int = 3306
+    port: int = 3198
 
     @classmethod
     def from_env(cls) -> 'DatabaseConfig':
-        """Create Database Config From Environment Variables."""
+
+        database_url = os.getenv('DATABASE_URL') or os.getenv('POSTGRES_URL')
+        if database_url:
+            parsed = urlparse(database_url)
+            return cls(
+                host=parsed.hostname or '127.0.0.1',
+                user=unquote(parsed.username or 'root'),
+                password=unquote(parsed.password or ''),
+                name=(parsed.path or '/Tracer_Bot').lstrip('/'),
+                port=parsed.port or 5432
+            )
         return cls(
             host=os.getenv('DB_HOST', '127.0.0.1'),
             user=os.getenv('DB_USER', 'root'),
             password=os.getenv('DB_PASSWORD', ''),
             name=os.getenv('DB_NAME', 'Tracer_Bot'),
-            port=int(os.getenv('DB_PORT', '3306'))
+            port=int(os.getenv('DB_PORT', '3198'))
         )
 
 
