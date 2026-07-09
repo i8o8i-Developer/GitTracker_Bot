@@ -31,7 +31,7 @@ class DatabaseConfig:
         """Create Database Config From Environment Variables.
 
         Supports a full DATABASE_URL / POSTGRES_URL connection string
-        (e.g. ******host:port/dbname). When present it
+        (e.g. postgresql://user:password@host:port/dbname). When present it
         takes priority over the individual DB_* variables.
         """
         database_url = os.getenv('DATABASE_URL') or os.getenv('POSTGRES_URL')
