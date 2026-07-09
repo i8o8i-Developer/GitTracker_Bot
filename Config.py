@@ -24,7 +24,7 @@ class DatabaseConfig:
     user: str = "root"
     password: str = ""
     name: str = "Tracer_Bot"
-    port: int = 5432
+    port: int = 3198
 
     @classmethod
     def from_env(cls) -> 'DatabaseConfig':
