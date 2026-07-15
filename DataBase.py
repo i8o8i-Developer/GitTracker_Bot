@@ -63,28 +63,44 @@ class DatabaseManager:
             bool: True If Successful, False Otherwise
         """
         try:
-            # First Connect Without Database To Create It
-            temp_conn = psycopg2.connect(
-                host=config.database.host,
-                user=config.database.user,
-                password=config.database.password,
-                port=config.database.port,
-                dbname='postgres',  # Connect to default postgres database
-                connect_timeout=10
-            )
-            temp_conn.autocommit = True
-
-            with temp_conn.cursor() as cursor:
-                try:
-                    cursor.execute(f"CREATE DATABASE {config.database.name}")
-                    logger.info(f"Database '{config.database.name}' Created")
-                except psycopg2.errors.DuplicateDatabase:
-                    logger.info(f"Database '{config.database.name}' Already Exists")
-                except Exception as e:
-                    logger.error(f"Error Creating Database: {e}")
+            # 
+            try:
+                target_conn = psycopg2.connect(
+                    host=config.database.host,
+                    user=config.database.user,
+                    password=config.database.password,
+                    port=config.database.port,
+                    dbname=config.database.name,
+                    connect_timeout=10
+                )
+                target_conn.close()
+                logger.info(f"Database '{config.database.name}' Already Exists And Is Accessible")
+            except psycopg2.OperationalError as e:
+                
+                if f'database "{config.database.name}" does not exist'.lower() in str(e).lower():
+                    temp_conn = psycopg2.connect(
+                        host=config.database.host,
+                        user=config.database.user,
+                        password=config.database.password,
+                        port=config.database.port,
+                        dbname='postgres',  # Connect to default postgres database
+                        connect_timeout=10
+                    )
+                    temp_conn.autocommit = True
+        
+                    with temp_conn.cursor() as cursor:
+                        try:
+                            cursor.execute(f"CREATE DATABASE {config.database.name}")
+                            logger.info(f"Database '{config.database.name}' Created")
+                        except psycopg2.errors.DuplicateDatabase:
+                            logger.info(f"Database '{config.database.name}' Already Exists")
+                        except Exception as create_error:
+                            logger.error(f"Error Creating Database: {create_error}")
+                            raise
+        
+                    temp_conn.close()
+                else:
                     raise
-
-            temp_conn.close()
 
             # Now Create Tables
             with self.get_connection() as conn:
