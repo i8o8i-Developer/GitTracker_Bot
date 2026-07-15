@@ -26,6 +26,10 @@ class DatabaseConfig:
     name: str = "Tracer_Bot"
     port: int = 3198
 
+    @property
+    def connection_url(self) -> str:
+        return f"postgresql://{self.user}:***@{self.host}:{self.port}/{self.name}"
+
     @classmethod
     def from_env(cls) -> 'DatabaseConfig':
 
@@ -39,12 +43,16 @@ class DatabaseConfig:
                 name=(parsed.path or '/Tracer_Bot').lstrip('/'),
                 port=parsed.port or 5432
             )
+            
+        port_str = os.getenv('DB_PORT', '3198').strip()
+        port = int(port_str) if port_str.isdigit() else 3198
+
         return cls(
-            host=os.getenv('DB_HOST', '127.0.0.1'),
-            user=os.getenv('DB_USER', 'root'),
+            host=os.getenv('DB_HOST', '127.0.0.1').strip(),
+            user=os.getenv('DB_USER', 'root').strip(),
             password=os.getenv('DB_PASSWORD', ''),
-            name=os.getenv('DB_NAME', 'Tracer_Bot'),
-            port=int(os.getenv('DB_PORT', '3198'))
+            name=os.getenv('DB_NAME', 'Tracer_Bot').strip(),
+            port=port
         )
 
 
