@@ -225,6 +225,7 @@ async def Start(Update: Update, Context: ContextTypes.DEFAULT_TYPE):
             "",
             "📋 Available commands:",
             "🔗 <code>/connect</code> — Link Your GitHub Account",
+            "🚪 <code>/logout</code> — Unlink Your GitHub Account",
             "📌 <code>/setrepo Owner/Repo</code> — Add Repository Tracking",
             "📥 <code>/getrepo</code> — Show Connected Repositories",
             "💬 <code>/comment Owner/Repo #ID Message</code> — Post a Comment",
@@ -280,6 +281,27 @@ async def Connect(Update: Update, Context: ContextTypes.DEFAULT_TYPE):
         await Update.message.reply_text(error_msg, parse_mode="HTML")
         logger.error(f"Error Generating Connection Link For User {Update.effective_user.id}: {e}")
 
+async def Logout(Update: Update, Context: ContextTypes.DEFAULT_TYPE):
+    """Handle GitHub Account Logout."""
+    telegram_id = Update.effective_user.id
+    if DataBase.Delete_User(telegram_id):
+        success_msg = build_success_card(
+            "Logged Out Successfully",
+            [
+                "Your GitHub Account Has Been Unlinked.",
+                "All Associated Data Has Been Removed.",
+                "",
+                "Use <code>/connect</code> If You Wish To Re-Link Your Account."
+            ]
+        )
+        await Update.message.reply_text(success_msg, parse_mode="HTML")
+    else:
+        error_msg = build_error_card(
+            "Logout Failed",
+            ["An Error Occurred While Logging Out.", "Please Try Again Later."]
+        )
+        await Update.message.reply_text(error_msg, parse_mode="HTML")
+
 
 async def Help(Update: Update, Context: ContextTypes.DEFAULT_TYPE):
     """Show A Friendly Help Menu."""
@@ -289,6 +311,7 @@ async def Help(Update: Update, Context: ContextTypes.DEFAULT_TYPE):
             "Use Any Of The Commands Below To Manage Your GitHub Tracking:",
             "",
             "🔗 <code>/connect</code> — Link Your GitHub Account",
+            "🚪 <code>/logout</code> — Unlink Your GitHub Account",
             "📌 <code>/setrepo Owner/Repo</code> — Add Repository Tracking",
             "📥 <code>/getrepo</code> — Show Connected Repositories",
             "🗑 <code>/removerepo Owner/Repo</code> — Remove A Repository Connection",
@@ -2006,6 +2029,7 @@ def build_telegram_application() -> Application:
         ("about", About),
         ("status", Status),
         ("connect", Connect),
+        ("logout", Logout),
         ("setrepo", SetRepo),
         ("getrepo", GetRepo),
         ("removerepo", RemoveRepo),

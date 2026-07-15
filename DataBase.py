@@ -220,6 +220,19 @@ class DatabaseManager:
             logger.error(f"Failed To Get Token For User {telegram_id}: {e}")
             return None
 
+    def delete_user(self, telegram_id: int) -> bool:
+
+        try:
+            with self.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute("DELETE FROM User_Repo_Connections WHERE Telegram_Id = %s", (telegram_id,))
+                    cursor.execute("DELETE FROM Users WHERE Telegram_Id = %s", (telegram_id,))
+                    logger.info(f"User {telegram_id} Logged Out And Deleted Successfully")
+                    return True
+        except Exception as e:
+            logger.error(f"Failed To Delete User {telegram_id}: {e}")
+            return False
+
     def add_repo_connection(self, telegram_id: int, repo_name: str, chat_id: int,
                           chat_type: str, topic_id: Optional[int] = None) -> bool:
         """
@@ -367,6 +380,10 @@ def Save_User(telegram_id, github_username, github_token):
 def Get_Token(telegram_id):
     """Get Token (Backward Compatibility)."""
     return db_manager.get_token(telegram_id)
+
+def Delete_User(telegram_id):
+    """Delete User (Backward Compatibility)."""
+    return db_manager.delete_user(telegram_id)
 
 def Add_Repo_Connection(telegram_id, repo, chat_id, chat_type, topic_id=None):
     """Add Repo Connection (Backward Compatibility)."""
