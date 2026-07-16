@@ -267,11 +267,17 @@ async def Start(Update: Update, Context: ContextTypes.DEFAULT_TYPE):
             "📌 <code>/setrepo Owner/Repo</code> — Add Repository Tracking",
             "🏢 <code>/setorg OrgName</code> — Track An Entire Organization",
             "📥 <code>/getrepo</code> — Show Connected Repositories",
-            "💬 <code>/comment Owner/Repo #ID Message</code> — Post a Comment",
-            "📊 <code>/stats Owner/Repo</code> — Repository Overview",
-            "📋 <code>/listwebhooks</code> — View Repository Webhooks",
             "🗑 <code>/removerepo Owner/Repo</code> — Stop Notifications",
             "🗑 <code>/removeorg OrgName</code> — Stop Org Notifications",
+            "💬 <code>/comment Owner/Repo #ID Message</code> — Post a Comment",
+            "📊 <code>/stats Owner/Repo</code> — Repository Overview",
+            "🕒 <code>/recent Owner/Repo</code> — Show Recent Commits",
+            "🌿 <code>/branches Owner/Repo</code> — Show Repository Branches",
+            "👥 <code>/contributors Owner/Repo</code> — Show Top Contributors",
+            "📋 <code>/listwebhooks</code> — View Repository Webhooks",
+            "✂️ <code>/delwebhook Owner/Repo</code> — Delete Webhooks",
+            "📈 <code>/status</code> — Show Bot Status",
+            "ℹ️ <code>/about</code> — About GitTracker Bot",
             "",
             "✨ Features:",
             "• Real-time GitHub Activity Alerts",
@@ -362,6 +368,8 @@ async def Help(Update: Update, Context: ContextTypes.DEFAULT_TYPE):
             "🕒 <code>/recent Owner/Repo</code> — Show Recent Commits",
             "🌿 <code>/branches Owner/Repo</code> — Show Repository Branches",
             "👥 <code>/contributors Owner/Repo</code> — Show Top Contributors",
+            "📋 <code>/listwebhooks</code> — View Repository Webhooks",
+            "✂️ <code>/delwebhook Owner/Repo</code> — Delete Webhooks",
             "📈 <code>/status</code> — Show Bot And Service Status",
             "ℹ️ <code>/about</code> — About GitTracker Bot"
         ],
@@ -516,13 +524,20 @@ async def SetRepo(Update: Update, Context: ContextTypes.DEFAULT_TYPE):
             await Update.message.reply_text(success_msg, parse_mode="HTML")
             logger.info(f"Repository {Repo} Connected For User {TelegramId} In Chat {ChatId}")
         else:
+            try:
+                error_details = Response.json().get('message', 'Unknown Error')
+            except Exception:
+                import html
+                error_details = html.escape(Response.text[:200]) + "..." if len(Response.text) > 200 else html.escape(Response.text)
+
             error_msg = build_warning_card(
                 "Repository Added With Warnings",
                 [
                     f"📦 Repository: <code>{Repo}</code>",
                     "🔗 Webhook Installation Failed",
                     "",
-                    f"GitHub Response: <code>{Response.text}</code>",
+                    f"Status Code: {Response.status_code}",
+                    f"GitHub Response: <code>{error_details}</code>",
                     "",
                     "The Repository Is Saved, But Webhook Delivery May Not Be Active.",
                     "Please Verify The Webhook Settings On GitHub If Needed."
