@@ -168,6 +168,44 @@ def validate_github_repo(repo_input: str) -> Optional[str]:
     return f"{owner}/{repo_name}"
 
 
+def validate_github_org(org_input: str) -> Optional[str]:
+    """
+    Validate And Normalize GitHub Organization Input.
+
+    Args:
+        org_input: Organization Name Or Full GitHub URL
+
+    Returns:
+        Normalized Organization Name Or None If Invalid
+    """
+    if not org_input or not isinstance(org_input, str):
+        return None
+
+    org_input = org_input.strip()
+
+    # Handle Full GitHub URLs
+    if org_input.startswith("http"):
+        if "github.com/" not in org_input:
+            return None
+        try:
+            org = org_input.rstrip("/").split("github.com/")[1]
+        except IndexError:
+            return None
+    else:
+        org = org_input
+
+    if "/" in org:
+        org = org.split("/")[0]
+
+    if not org:
+        return None
+
+    import re
+    if not re.match(r"^[a-zA-Z0-9._-]+$", org):
+        return None
+
+    return org
+
 def validate_issue_number(issue_str: str) -> Optional[int]:
     """
     Validate Issue/PR Number.
@@ -227,11 +265,13 @@ async def Start(Update: Update, Context: ContextTypes.DEFAULT_TYPE):
             "🔗 <code>/connect</code> — Link Your GitHub Account",
             "🚪 <code>/logout</code> — Unlink Your GitHub Account",
             "📌 <code>/setrepo Owner/Repo</code> — Add Repository Tracking",
+            "🏢 <code>/setorg OrgName</code> — Track An Entire Organization",
             "📥 <code>/getrepo</code> — Show Connected Repositories",
             "💬 <code>/comment Owner/Repo #ID Message</code> — Post a Comment",
             "📊 <code>/stats Owner/Repo</code> — Repository Overview",
             "📋 <code>/listwebhooks</code> — View Repository Webhooks",
             "🗑 <code>/removerepo Owner/Repo</code> — Stop Notifications",
+            "🗑 <code>/removeorg OrgName</code> — Stop Org Notifications",
             "",
             "✨ Features:",
             "• Real-time GitHub Activity Alerts",
@@ -251,7 +291,7 @@ async def Connect(Update: Update, Context: ContextTypes.DEFAULT_TYPE):
         telegram_id = Update.effective_user.id
         auth_url = (
             f"https://github.com/login/oauth/authorize"
-            f"?client_id={github_client_id}&scope=repo"
+            f"?client_id={github_client_id}&scope=repo,admin:org_hook"
             f"&state={telegram_id}"
         )
         connect_msg = build_message_card(
@@ -313,8 +353,10 @@ async def Help(Update: Update, Context: ContextTypes.DEFAULT_TYPE):
             "🔗 <code>/connect</code> — Link Your GitHub Account",
             "🚪 <code>/logout</code> — Unlink Your GitHub Account",
             "📌 <code>/setrepo Owner/Repo</code> — Add Repository Tracking",
+            "🏢 <code>/setorg OrgName</code> — Track An Entire Organization",
             "📥 <code>/getrepo</code> — Show Connected Repositories",
             "🗑 <code>/removerepo Owner/Repo</code> — Remove A Repository Connection",
+            "🗑 <code>/removeorg OrgName</code> — Remove An Organization Connection",
             "💬 <code>/comment Owner/Repo #ID Message</code> — Post Issue Or PR Comments",
             "📊 <code>/stats Owner/Repo</code> — Show Repository Statistics",
             "🕒 <code>/recent Owner/Repo</code> — Show Recent Commits",
@@ -589,6 +631,158 @@ async def RemoveRepo(Update: Update, Context: ContextTypes.DEFAULT_TYPE):
             build_error_card(
                 "Removal Failed",
                 ["An Error Occurred While Removing The Repository Connection.", "Please Try Again Later."]
+            ),
+            parse_mode="HTML"
+        )
+
+async def SetOrg(Update: Update, Context: ContextTypes.DEFAULT_TYPE):
+    try:
+        if not Context.args:
+            await Update.message.reply_text(
+                build_warning_card(
+                    "Set Organization",
+                    ["Usage: <code>/setorg OrgName</code> Or A Full GitHub URL"]
+                ),
+                parse_mode="HTML"
+            )
+            return
+
+        OrgInput = Context.args[0]
+
+        # Validate Organization Input
+        Org = validate_github_org(OrgInput)
+        if not Org:
+            await Update.message.reply_text(
+                build_error_card(
+                    "Invalid Organization",
+                    ["Use A Valid Organization Name Or A GitHub URL Like <code>https://github.com/orgname</code>"]
+                ),
+                parse_mode="HTML"
+            )
+            return
+
+        TelegramId = Update.effective_user.id
+        ChatId = Update.effective_chat.id
+        ChatType = Update.effective_chat.type
+        TopicId = getattr(Update.effective_message, 'message_thread_id', None) if ChatType == 'supergroup' else None
+
+        Token = DataBase.Get_Token(TelegramId)
+        if not Token:
+            await Update.message.reply_text(
+                build_warning_card(
+                    "Account Not Connected",
+                    ["Please Use <code>/connect</code> Before Adding An Organization."]
+                ),
+                parse_mode="HTML"
+            )
+            return
+
+        # Check If Organization Connection Already Exists For This Chat
+        existing_connections = DataBase.get_user_repo_connections(TelegramId)
+        for conn in existing_connections:
+            if conn['Repo_Name'] == Org and conn['Chat_Id'] == ChatId and conn['Topic_Id'] == TopicId:
+                await Update.message.reply_text(
+                    build_warning_card(
+                        "Already Connected",
+                        [f"Organization <code>{Org}</code> Is Already Connected For This Chat."]
+                    ),
+                    parse_mode="HTML"
+                )
+                return
+
+        # Add The Org Connection (We store it in Repo_Name)
+        DataBase.Add_Repo_Connection(TelegramId, Org, ChatId, ChatType, TopicId)
+
+        HookUrl = f"{webhook_url}/webhook"
+        ApiUrl = f"https://api.github.com/orgs/{Org}/hooks"
+        Headers = {"Authorization": f"token {Token}"}
+        Data = {
+            "name": "web",
+            "active": True,
+            "events": ["push", "pull_request", "issues", "delete", "create", "release"],
+            "config": {"url": HookUrl, "content_type": "json", "insecure_ssl": "0"},
+        }
+
+        # Add Webhook Secret If Configured
+        if Config.config.github.webhook_secret:
+            Data["config"]["secret"] = Config.config.github.webhook_secret
+
+        Response = requests.post(ApiUrl, json=Data, headers=Headers, timeout=10)
+
+        if Response.status_code in [200, 201]:
+            success_msg = build_success_card(
+                "Organization Connected",
+                [
+                    f"🏢 Organization: <code>{Org}</code>",
+                    f"🔗 Webhook: Installed And Active",
+                    f"📱 Chat: {ChatType.capitalize()}",
+                    "",
+                    "You Will Now Receive Updates For All Repositories In This Organization."
+                ]
+            )
+            await Update.message.reply_text(success_msg, parse_mode="HTML")
+            logger.info(f"Organization {Org} Connected For User {TelegramId} In Chat {ChatId}")
+        else:
+            error_msg = build_warning_card(
+                "Organization Added With Warnings",
+                [
+                    f"🏢 Organization: <code>{Org}</code>",
+                    "⚠️ Webhook Installation Failed.",
+                    "",
+                    "Did You Click 'Grant' Next To Your Organization During `/connect`?",
+                    "If Not, Use `/connect` Again, And Make Sure To Explicitly Grant Organization Access On The GitHub Page.",
+                    "",
+                    f"Status Code: {Response.status_code}",
+                    f"Message: {Response.json().get('message', 'Unknown Error')}"
+                ]
+            )
+            await Update.message.reply_text(error_msg, parse_mode="HTML")
+            logger.warning(f"Failed To Add Org Webhook For {Org}: {Response.status_code} - {Response.text}")
+
+    except Exception as e:
+        await Update.message.reply_text(
+            build_error_card(
+                "Connection Failed",
+                ["An Error Occurred While Adding The Organization.", "Please Try Again Later."]
+            ),
+            parse_mode="HTML"
+        )
+        logger.error(f"Error In SetOrg Handler: {e}")
+
+async def RemoveOrg(Update: Update, Context: ContextTypes.DEFAULT_TYPE):
+    try:
+        if not Context.args:
+            await Update.message.reply_text(
+                build_warning_card(
+                    "Remove Organization",
+                    ["Usage: <code>/removeorg OrgName</code>"]
+                ),
+                parse_mode="HTML"
+            )
+            return
+
+        Org = Context.args[0]
+        TelegramId = Update.effective_user.id
+        ChatId = Update.effective_chat.id
+        TopicId = getattr(Update.effective_message, 'message_thread_id', None) if Update.effective_chat.type == 'supergroup' else None
+
+        DataBase.Remove_Repo_Connection(TelegramId, Org, ChatId, TopicId)
+        success_msg = build_success_card(
+            "Organization Removed",
+            [
+                f"🏢 Organization: <code>{Org}</code>",
+                f"📱 Chat: {Update.effective_chat.type.capitalize()}",
+                "",
+                "The Organization Connection Has Been Removed For This Chat.",
+                "You Will No Longer Receive Notifications For It Here."
+            ]
+        )
+        await Update.message.reply_text(success_msg, parse_mode="HTML")
+    except Exception as e:
+        await Update.message.reply_text(
+            build_error_card(
+                "Removal Failed",
+                ["An Error Occurred While Removing The Organization Connection.", "Please Try Again Later."]
             ),
             parse_mode="HTML"
         )
@@ -1454,6 +1648,12 @@ def handle_push_event(data: dict) -> tuple:
 
         # Get All Connections For This Repository
         connections = DataBase.get_user_repo_connections_by_repo(repo_name)
+        org_name = data.get("repository", {}).get("owner", {}).get("login")
+        if org_name:
+            org_conns = DataBase.get_user_repo_connections_by_repo(org_name)
+            for oc in org_conns:
+                if not any(c["Telegram_Id"] == oc["Telegram_Id"] and c["Chat_Id"] == oc["Chat_Id"] and c.get("Topic_Id") == oc.get("Topic_Id") for c in connections):
+                    connections.append(oc)
         if not connections:
             logger.info(f"No Connections Found For Repository: {repo_name}")
             return jsonify({"status": "No Connections"}), 200
@@ -1495,6 +1695,12 @@ def handle_pull_request_event(data: dict) -> tuple:
 
         # Get Connections And Send Notification
         connections = DataBase.get_user_repo_connections_by_repo(repo_name)
+        org_name = data.get("repository", {}).get("owner", {}).get("login")
+        if org_name:
+            org_conns = DataBase.get_user_repo_connections_by_repo(org_name)
+            for oc in org_conns:
+                if not any(c["Telegram_Id"] == oc["Telegram_Id"] and c["Chat_Id"] == oc["Chat_Id"] and c.get("Topic_Id") == oc.get("Topic_Id") for c in connections):
+                    connections.append(oc)
         for connection in connections:
             try:
                 chat_id = connection["Chat_Id"]
@@ -1526,6 +1732,12 @@ def handle_issues_event(data: dict) -> tuple:
 
         # Get Connections And Send Notification
         connections = DataBase.get_user_repo_connections_by_repo(repo_name)
+        org_name = data.get("repository", {}).get("owner", {}).get("login")
+        if org_name:
+            org_conns = DataBase.get_user_repo_connections_by_repo(org_name)
+            for oc in org_conns:
+                if not any(c["Telegram_Id"] == oc["Telegram_Id"] and c["Chat_Id"] == oc["Chat_Id"] and c.get("Topic_Id") == oc.get("Topic_Id") for c in connections):
+                    connections.append(oc)
         for connection in connections:
             try:
                 chat_id = connection["Chat_Id"]
@@ -1557,6 +1769,12 @@ def handle_create_event(data: dict) -> tuple:
             return jsonify({"error": "Missing Fields"}), 400
 
         connections = DataBase.get_user_repo_connections_by_repo(repo_name)
+        org_name = data.get("repository", {}).get("owner", {}).get("login")
+        if org_name:
+            org_conns = DataBase.get_user_repo_connections_by_repo(org_name)
+            for oc in org_conns:
+                if not any(c["Telegram_Id"] == oc["Telegram_Id"] and c["Chat_Id"] == oc["Chat_Id"] and c.get("Topic_Id") == oc.get("Topic_Id") for c in connections):
+                    connections.append(oc)
         message = build_message_card(
             "BRANCH/TAG CREATED",
             [
@@ -1598,6 +1816,12 @@ def handle_delete_event(data: dict) -> tuple:
             return jsonify({"error": "Missing Fields"}), 400
 
         connections = DataBase.get_user_repo_connections_by_repo(repo_name)
+        org_name = data.get("repository", {}).get("owner", {}).get("login")
+        if org_name:
+            org_conns = DataBase.get_user_repo_connections_by_repo(org_name)
+            for oc in org_conns:
+                if not any(c["Telegram_Id"] == oc["Telegram_Id"] and c["Chat_Id"] == oc["Chat_Id"] and c.get("Topic_Id") == oc.get("Topic_Id") for c in connections):
+                    connections.append(oc)
         message = build_message_card(
             "BRANCH/TAG DELETED",
             [
@@ -1639,6 +1863,12 @@ def handle_release_event(data: dict) -> tuple:
 
         # Get Connections And Send Notification
         connections = DataBase.get_user_repo_connections_by_repo(repo_name)
+        org_name = data.get("repository", {}).get("owner", {}).get("login")
+        if org_name:
+            org_conns = DataBase.get_user_repo_connections_by_repo(org_name)
+            for oc in org_conns:
+                if not any(c["Telegram_Id"] == oc["Telegram_Id"] and c["Chat_Id"] == oc["Chat_Id"] and c.get("Topic_Id") == oc.get("Topic_Id") for c in connections):
+                    connections.append(oc)
         for connection in connections:
             try:
                 chat_id = connection["Chat_Id"]
@@ -2033,6 +2263,8 @@ def build_telegram_application() -> Application:
         ("setrepo", SetRepo),
         ("getrepo", GetRepo),
         ("removerepo", RemoveRepo),
+        ("setorg", SetOrg),
+        ("removeorg", RemoveOrg),
         ("comment", Comment),
         ("listwebhooks", ListWebhooks),
         ("delwebhook", DelWebhook),
